@@ -9,6 +9,7 @@ import android.view.SurfaceView
 import com.example.game_android.game.core.Camera
 import com.example.game_android.game.core.Constants
 import com.example.game_android.game.core.InputController
+import com.example.game_android.game.core.SoundManager
 import com.example.game_android.game.entities.*
 import com.example.game_android.game.ui.HudRenderer
 import com.example.game_android.game.world.GameState
@@ -44,6 +45,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private val enemyBullets = mutableListOf<Bullet>()
     private val clouds = MutableList(12) { i -> Cloud(i * 300f + 50f, 60f + (i % 3) * 30f) }
 
+    private val sound = SoundManager(context)
+
     private var paused = false
     private var gameOver = false
     private var victory = false
@@ -70,6 +73,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             thread?.join()
         } catch (_: InterruptedException) {
         }
+        sound.release()
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -155,16 +159,24 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         bullets.forEach { b ->
             enemies.forEach { e ->
                 if (e.alive && b.overlaps(e)) {
-                    e.hit(); b.dead = true
+                    e.hit()
+                    b.dead = true
+                    sound.playHitEnemy()
                 }
             }
             if (boss.alive && b.overlaps(boss)) {
-                boss.hit(); b.dead = true; if (!boss.alive) state.victory = true
+                boss.hit()
+                b.dead = true
+                sound.playHitEnemy()
+                if (!boss.alive) state.victory = true
             }
         }
         enemyBullets.forEach { b ->
             if (b.overlaps(player)) {
-                player.hit(); b.dead = true; if (player.hp <= 0) state.gameOver = true
+                player.hit()
+                b.dead = true
+                sound.playPlayerDie()
+                if (player.hp <= 0) state.gameOver = true
             }
         }
 
