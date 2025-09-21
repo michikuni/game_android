@@ -246,9 +246,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         return true
     }
 
-
-
-
     override fun performClick(): Boolean {
         super.performClick(); return true
     }

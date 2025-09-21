@@ -15,7 +15,6 @@ class InputController(private val view: View) {
     private val btnPause = RectF()
 
 
-
     var left = false; private set
     var right = false; private set
     var jump = false; private set
@@ -69,4 +68,6 @@ class InputController(private val view: View) {
         player.wasJump = jump
         return pressed && player.canJump
     }
+    fun isPauseHit(x: Float, y: Float): Boolean = btnPause.contains(x, y)
+
 }

@@ -7,110 +7,138 @@ import com.example.game_android.game.core.InputController
 import com.example.game_android.game.world.GameState
 
 class HudRenderer(private val input: InputController) {
-    private val p = Paint(Paint.ANTI_ALIAS_FLAG);
+
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val t = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE; textSize = 32f; typeface =
-        Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        color = Color.WHITE
+        textSize = 32f
+        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
     }
 
+    // --- Overlay button hit-areas (được set khi vẽ overlay) ---
+    private val pauseContinueRect = RectF()
+    private val pauseExitRect = RectF()
+    private val gameOverRetryRect = RectF()
+    private val gameOverExitRect = RectF()
+    private val victoryExitRect = RectF()
+
     fun drawHud(c: Canvas, player: Player, boss: Boss, state: GameState) {
-        val r = RectF(16f, 16f, 48f, 48f); repeat(3) { i ->
-            p.color = if (i < player.hp) Color.RED else Color.DKGRAY; c.drawRoundRect(
-            r.left + i * 40,
-            r.top,
-            r.right + i * 40,
-            r.bottom,
-            8f,
-            8f,
-            p
-        )
-        }; if (boss.alive) {
-            val barW = c.width * 0.4f;
-            val bar = RectF(c.width / 2f - barW / 2, 16f, c.width / 2f + barW / 2, 28f); p.color =
-                Color.GRAY; c.drawRect(bar, p); p.color = Color.MAGENTA;
-            val w = barW * (boss.hp / 30f); c.drawRect(
-                RectF(
-                    bar.left,
-                    bar.top,
-                    bar.left + w,
-                    bar.bottom
-                ), p
+        // Hearts
+        val r = RectF(16f, 16f, 48f, 48f)
+        repeat(3) { i ->
+            p.color = if (i < player.hp) Color.RED else Color.DKGRAY
+            c.drawRoundRect(
+                r.left + i * 40,
+                r.top,
+                r.right + i * 40,
+                r.bottom,
+                8f, 8f, p
             )
-        }; input.buttons().forEach { (rect, label) -> drawButton(c, rect, label) }
+        }
+
+        // Boss HP
+        if (boss.alive) {
+            val barW = c.width * 0.4f
+            val bar = RectF(c.width / 2f - barW / 2, 16f, c.width / 2f + barW / 2, 28f)
+            p.color = Color.GRAY
+            c.drawRect(bar, p)
+            p.color = Color.MAGENTA
+            val w = barW * (boss.hp / 30f)
+            c.drawRect(RectF(bar.left, bar.top, bar.left + w, bar.bottom), p)
+        }
+
+        // HUD buttons (← → A B II)
+        input.buttons().forEach { (rect, label) -> drawButton(c, rect, label) }
     }
 
     private fun drawButton(c: Canvas, r: RectF, label: String) {
         p.shader = LinearGradient(
-            r.left,
-            r.top,
-            r.right,
-            r.bottom,
+            r.left, r.top, r.right, r.bottom,
             Color.argb(160, 60, 60, 70),
             Color.argb(160, 30, 30, 40),
             Shader.TileMode.CLAMP
-        ); c.drawRoundRect(r, 20f, 20f, p); p.shader = null; t.textAlign =
-            Paint.Align.CENTER; t.textSize = minOf(r.width(), r.height()) * 0.5f; c.drawText(
-            label,
-            r.centerX(),
-            r.centerY() + t.textSize / 3f,
-            t
         )
+        c.drawRoundRect(r, 20f, 20f, p)
+        p.shader = null
+        t.textAlign = Paint.Align.CENTER
+        t.textSize = minOf(r.width(), r.height()) * 0.5f
+        c.drawText(label, r.centerX(), r.centerY() + t.textSize / 3f, t)
     }
 
     enum class Action { PauseToggle, Exit, Continue, Retry, BackToMenu }
 
     fun drawOverlays(c: Canvas, s: GameState, onAction: (Action) -> Unit) {
-        if (!s.anyOverlay()) return; p.color = Color.argb(180, 0, 0, 0); c.drawRect(
-            0f,
-            0f,
-            c.width.toFloat(),
-            c.height.toFloat(),
-            p
-        ); t.textAlign = Paint.Align.CENTER; t.textSize = 64f
+        // Clear hit areas before drawing
+        clearOverlayRects()
+
+        if (!s.anyOverlay()) return
+
+        p.color = Color.argb(180, 0, 0, 0)
+        c.drawRect(0f, 0f, c.width.toFloat(), c.height.toFloat(), p)
+
+        t.textAlign = Paint.Align.CENTER
+        t.textSize = 64f
+
         if (s.paused) {
-            c.drawText("PAUSED", c.width / 2f, c.height * 0.35f, t);
-            val bw = c.width * 0.3f;
-            val bh = c.height * 0.12f;
-            val cont = RectF(
+            c.drawText("PAUSED", c.width / 2f, c.height * 0.35f, t)
+
+            val bw = c.width * 0.3f
+            val bh = c.height * 0.12f
+
+            pauseContinueRect.set(
                 c.width / 2f - bw / 2,
                 c.height * 0.45f,
                 c.width / 2f + bw / 2,
                 c.height * 0.45f + bh
-            );
-            val exit = RectF(
+            )
+            pauseExitRect.set(
                 c.width / 2f - bw / 2,
-                cont.bottom + 24f,
+                pauseContinueRect.bottom + 24f,
                 c.width / 2f + bw / 2,
-                cont.bottom + 24f + bh
-            ); drawButton(c, cont, "Continue"); drawButton(c, exit, "Exit")
+                pauseContinueRect.bottom + 24f + bh
+            )
+
+            drawButton(c, pauseContinueRect, "Continue")
+            drawButton(c, pauseExitRect, "Exit")
         }
+
         if (s.gameOver) {
-            c.drawText("GAME OVER", c.width / 2f, c.height * 0.35f, t);
-            val bw = c.width * 0.3f;
-            val bh = c.height * 0.12f;
-            val retry = RectF(
+            c.drawText("GAME OVER", c.width / 2f, c.height * 0.35f, t)
+
+            val bw = c.width * 0.3f
+            val bh = c.height * 0.12f
+
+            gameOverRetryRect.set(
                 c.width / 2f - bw / 2,
                 c.height * 0.45f,
                 c.width / 2f + bw / 2,
                 c.height * 0.45f + bh
-            );
-            val exit = RectF(
+            )
+            gameOverExitRect.set(
                 c.width / 2f - bw / 2,
-                retry.bottom + 24f,
+                gameOverRetryRect.bottom + 24f,
                 c.width / 2f + bw / 2,
-                retry.bottom + 24f + bh
-            ); drawButton(c, retry, "Retry"); drawButton(c, exit, "Exit")
+                gameOverRetryRect.bottom + 24f + bh
+            )
+
+            drawButton(c, gameOverRetryRect, "Retry")
+            drawButton(c, gameOverExitRect, "Exit")
         }
+
         if (s.victory) {
-            c.drawText("VICTORY!", c.width / 2f, c.height * 0.35f, t);
-            val bw = c.width * 0.4f;
-            val bh = c.height * 0.12f;
-            val exit = RectF(
+            c.drawText("VICTORY!", c.width / 2f, c.height * 0.35f, t)
+
+            val bw = c.width * 0.4f
+            val bh = c.height * 0.12f
+
+            victoryExitRect.set(
                 c.width / 2f - bw / 2,
                 c.height * 0.45f,
                 c.width / 2f + bw / 2,
                 c.height * 0.45f + bh
-            ); drawButton(c, exit, "Back to Menu")
+            )
+
+            drawButton(c, victoryExitRect, "Back to Menu")
         }
     }
 
@@ -124,7 +152,7 @@ class HudRenderer(private val input: InputController) {
         onRetry: () -> Unit,
         onBackToMenu: () -> Unit
     ): Boolean {
-        // Nếu đang hiển thị overlay nào → ưu tiên bắt nút của overlay
+        // Ưu tiên overlay
         if (state.gameOver) {
             if (gameOverRetryRect.contains(x, y)) { onRetry(); return true }
             if (gameOverExitRect.contains(x, y)) { onExit(); return true }
@@ -140,10 +168,17 @@ class HudRenderer(private val input: InputController) {
             return false
         }
 
-        // Không có overlay → thử nút Pause trên HUD
-        if (pauseButtonRect.contains(x, y)) { onPauseToggle(); return true }
+        // Không có overlay → thử nút Pause trên HUD (nhờ InputController)
+        if (input.isPauseHit(x, y)) { onPauseToggle(); return true }
 
         return false
     }
 
+    private fun clearOverlayRects() {
+        pauseContinueRect.setEmpty()
+        pauseExitRect.setEmpty()
+        gameOverRetryRect.setEmpty()
+        gameOverExitRect.setEmpty()
+        victoryExitRect.setEmpty()
+    }
 }
