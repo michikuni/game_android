@@ -37,11 +37,37 @@ class InputController(private val view: View) {
         val bw = w * 0.12f
         val bh = h * 0.18f
 
-        btnLeft.set(pad, h - bh - pad, pad + bw, h - pad)
-        btnRight.set(btnLeft.right + pad, btnLeft.top, btnLeft.right + pad + bw, btnLeft.bottom)
-        btnJump.set(w - bw - pad, h - bh - pad, w - pad, h - pad)
-        btnFire.set(btnJump.left - pad - bw, btnJump.top, btnJump.left - pad, btnJump.bottom)
-        btnPause.set(w - pad - bw * 0.7f, pad, w - pad, pad + bh * 0.5f)
+        btnLeft.set(
+            pad,
+            h - bh - pad,
+            pad + bw,
+            h - pad)
+        btnRight.set(
+            btnLeft.right + pad,
+            btnLeft.top,
+            btnLeft.right + pad + bw,
+            btnLeft.bottom)
+        btnJump.set(
+            w - bw - pad,
+            h - bh - pad,
+            w - pad,
+            h - pad)
+        btnFire.set(
+            btnJump.left - pad - bw,
+            btnJump.top,
+            btnJump.left - pad,
+            btnJump.bottom)
+        btnPause.set(
+            w - pad - bw * 0.7f,
+            pad,
+            w - pad,
+            pad + bh * 0.5f)
+        btnMute.set(
+            btnPause.left - pad - bw * 0.7f,
+            btnPause.top,
+            btnPause.left - pad,
+            btnPause.bottom
+        )
     }
 
     private fun RectF.containsWithSlop(x: Float, y: Float, slop: Float): Boolean {
@@ -138,7 +164,12 @@ class InputController(private val view: View) {
     }
 
     fun buttons(): List<Pair<RectF, String>> = listOf(
-        btnLeft to "←", btnRight to "→", btnJump to "A", btnFire to "B", btnPause to "II"
+        btnLeft to "←",
+        btnRight to "→",
+        btnJump to "A",
+        btnFire to "B",
+        btnPause to "II",
+        btnMute to "X"
     )
 
     fun jumpPressed(player: Player): Boolean {
