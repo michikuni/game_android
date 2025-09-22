@@ -43,7 +43,7 @@ class MainActivity : AppCompatActivity() {
         override fun onDraw(canvas: Canvas) {
             canvas.drawColor(Color.rgb(20, 22, 28))
             paint.textAlign = Paint.Align.CENTER
-            canvas.drawText("ContraCanvas", width/2f, height*0.15f, paint)
+            canvas.drawText("Contra", width/2f, height*0.15f, paint)
             buttons.forEachIndexed { idx, b ->
                 btnPaint.shader = LinearGradient(b.rect.left, b.rect.top, b.rect.right, b.rect.bottom,
                     Color.rgb(70,70,90), Color.rgb(30,30,45), Shader.TileMode.CLAMP)
@@ -53,7 +53,7 @@ class MainActivity : AppCompatActivity() {
             }
             paint.textSize = 24f
             paint.color = Color.LTGRAY
-            canvas.drawText("Kotlin + Canvas • 500x20 tile map • Boss at the end", width/2f, height*0.92f, paint)
+            canvas.drawText("Dang Minh Phuong • Tran Luu Dung • Nguyen Minh Duc", width/2f, height*0.92f, paint)
             paint.color = Color.WHITE
         }
 
