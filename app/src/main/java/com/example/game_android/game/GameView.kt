@@ -25,7 +25,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     // Core
     private val camera = Camera()
-    private val input = InputController(this)
+    private val input = InputController(this, context)
     private val state = GameState()
 
     // World & Entities
@@ -43,18 +43,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private var boss = Boss(map.bossStartX.toFloat(), map.bossStartY.toFloat(), context)
     private val bullets = mutableListOf<Bullet>()
     private val enemyBullets = mutableListOf<Bullet>()
-    private val clouds = MutableList(12) { i -> Cloud(i * 300f + 50f, 60f + (i % 3) * 30f) }
 
     private val sound = SoundManager(context)
 
-    private var paused = false
-    private var gameOver = false
-    private var victory = false
-
-    private val overlay = com.example.game_android.game.core.OverlayButtons()
-
     // Rendering helpers
-    private val hud = HudRenderer(input)
+    private val hud = HudRenderer(input, context)
 
     init {
         holder.addCallback(this)
@@ -65,8 +58,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     // --- Surface callbacks ---
     override fun surfaceCreated(holder: SurfaceHolder) {
-        running = true; thread = Thread(this).apply { start() }
+        running = true
+        thread = Thread(this).apply { start() }
+        sound.startBgmLoop()
     }
+
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         running = false; try {
@@ -77,6 +73,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        map.initBackground(width, height)
         input.layout(width, height)
     }
 
@@ -98,9 +95,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     // --- Update world ---
     private fun update() {
         if (state.anyOverlay()) return
-
-        // Background
-        clouds.forEach { it.update(camera, width) }
 
         // Input → movement
         val accel = 0.8f
@@ -188,8 +182,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private fun drawFrame() {
         val c = holder.lockCanvas() ?: return
         try {
-            c.drawColor(Color.rgb(35, 38, 52))
-            map.drawBackground(c, camera, clouds)
+            // (Optional) clear if you like; parallax already paints the screen.
+            // c.drawColor(Color.rgb(35, 38, 52))
+            map.updateBackground(camera) // NEW: compute layer offsets from camera.x
+            map.drawBackground(c)        // NEW: draw 7-layer looping parallax
+
             c.save(); c.translate(-camera.x, -camera.y)
             map.drawTiles(c)
             enemies.forEach { it.draw(c) }
@@ -198,7 +195,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             enemyBullets.forEach { it.draw(c) }
             player.draw(c)
             c.restore()
-            hud.drawHud(c, player, boss, state)
+
+            hud.drawHud(c, player, boss, state, isMuted = sound.isMuted, isBgMuted = sound.isBgMuted)
             hud.drawOverlays(c, state) { action ->
                 when (action) {
                     HudRenderer.Action.PauseToggle -> state.paused = !state.paused
@@ -227,6 +225,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         state.reset()
     }
 
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
@@ -237,6 +236,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 val handledOverlay = hud.handleTouch(
                     x = x, y = y, state = state,
                     onPauseToggle = { state.paused = !state.paused },
+                    onMuteToggle = {  sound.toggleMute() },
+                    onBgMuteToggle = { sound},
                     onExit = { (context as? android.app.Activity)?.finish() },
                     onContinue = { state.paused = false },
                     onRetry = { resetGame() },

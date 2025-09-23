@@ -1,14 +1,16 @@
 package com.example.game_android.game.core
 
+import android.content.Context
 import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.View
 import androidx.compose.ui.geometry.Rect
+import com.example.game_android.R
 import com.example.game_android.game.world.GameState
 import com.example.game_android.game.entities.Player
 
 
-class InputController(private val view: View) {
+class InputController(private val view: View, context: Context) {
     // --- Button hit boxes ---
     private val btnLeft = RectF()
     private val btnRight = RectF()
@@ -29,46 +31,44 @@ class InputController(private val view: View) {
     private var jumpPid: Int? = null
     private var firePid: Int? = null
 
+    var onMuteToggle: (() -> Unit)? = null
+
     // Allow small drifts while “holding”
     private val touchSlopPx = view.resources.displayMetrics.density * 16f
 
     fun layout(w: Int, h: Int) {
         val pad = 16f
         val bw = w * 0.12f
-        val bh = h * 0.18f
+        val bh = h * 0.3f
 
-        btnLeft.set(
-            pad,
-            h - bh - pad,
-            pad + bw,
-            h - pad)
-        btnRight.set(
-            btnLeft.right + pad,
-            btnLeft.top,
-            btnLeft.right + pad + bw,
-            btnLeft.bottom)
+        // Nút tròn (giữ nguyên kích thước)
+        btnLeft.set(pad, h - bh - pad, pad + bw, h - pad)
+        btnRight.set(btnLeft.right + pad, btnLeft.top, btnLeft.right + pad + bw, btnLeft.bottom)
         btnJump.set(
-            w - bw - pad,
-            h - bh - pad,
+            w - bw*0.8f - pad,   // 0.8f = giảm 20%
+            h - bh*0.8f - pad,
             w - pad,
-            h - pad)
+            h - pad
+        )
+
         btnFire.set(
-            btnJump.left - pad - bw,
+            btnJump.left - pad - bw*0.8f,
             btnJump.top,
             btnJump.left - pad,
-            btnJump.bottom)
+            btnJump.bottom
+        )
+        // Nút vuông nhỏ cho Pause/Mute
+        val small = minOf(bw, bh) * 0.4f
         btnPause.set(
-            w - pad - bw * 0.7f,
-            pad,
-            w - pad,
-            pad + bh * 0.5f)
+            w - pad - small, pad,
+            w - pad, pad + small
+        )
         btnMute.set(
-            btnPause.left - pad - bw * 0.7f,
-            btnPause.top,
-            btnPause.left - pad,
-            btnPause.bottom
+            btnPause.left - pad - small, btnPause.top,
+            btnPause.left - pad, btnPause.top + small
         )
     }
+
 
     private fun RectF.containsWithSlop(x: Float, y: Float, slop: Float): Boolean {
         return x >= left - slop && x <= right + slop && y >= top - slop && y <= bottom + slop
@@ -134,6 +134,11 @@ class InputController(private val view: View) {
                     view.performClick()
                     return
                 }
+                if (btnMute.containsWithSlop(x, y, touchSlopPx)) {
+                    onMuteToggle?.invoke()
+                    view.performClick()
+                    return
+                }
 
                 // Try to acquire one button for this pointer
                 acquireIfHit(pid, x, y)
@@ -163,13 +168,16 @@ class InputController(private val view: View) {
         }
     }
 
-    fun buttons(): List<Pair<RectF, String>> = listOf(
-        btnLeft to "←",
-        btnRight to "→",
-        btnJump to "A",
-        btnFire to "B",
-        btnPause to "II",
-        btnMute to "X"
+    enum class BtnKind { Left, Right, Jump, Fire, Pause, Mute }
+    data class ButtonSpec(val rect: RectF, val kind: BtnKind)
+
+    fun buttons(): List<ButtonSpec> = listOf(
+        ButtonSpec(btnLeft,  BtnKind.Left),
+        ButtonSpec(btnRight, BtnKind.Right),
+        ButtonSpec(btnJump,  BtnKind.Jump),
+        ButtonSpec(btnFire,  BtnKind.Fire),
+        ButtonSpec(btnPause, BtnKind.Pause),
+        ButtonSpec(btnMute,  BtnKind.Mute)
     )
 
     fun jumpPressed(player: Player): Boolean {
@@ -179,4 +187,7 @@ class InputController(private val view: View) {
     }
 
     fun isPauseHit(x: Float, y: Float): Boolean = btnPause.containsWithSlop(x, y, touchSlopPx)
+    fun isMuteHit(x: Float, y: Float): Boolean = btnMute.containsWithSlop(x, y, touchSlopPx)
+    fun isBgMuteHit(x: Float, y: Float): Boolean = btnMute.containsWithSlop(x, y, touchSlopPx)
+
 }
