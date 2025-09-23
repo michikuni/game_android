@@ -18,6 +18,7 @@ class InputController(private val view: View, context: Context) {
     private val btnFire = RectF()
     private val btnPause = RectF()
     private val btnMute = RectF()
+    private val topMuteRect = RectF()
 
     // --- Active states exposed to GameView ---
     var left = false;     private set
@@ -42,15 +43,22 @@ class InputController(private val view: View, context: Context) {
         val bh = h * 0.3f
 
         // Nút tròn (giữ nguyên kích thước)
-        btnLeft.set(pad, h - bh - pad, pad + bw, h - pad)
-        btnRight.set(btnLeft.right + pad, btnLeft.top, btnLeft.right + pad + bw, btnLeft.bottom)
+        btnLeft.set(
+            pad,
+            h - bh - pad,
+            pad + bw,
+            h - pad)
+        btnRight.set(
+            btnLeft.right + pad,
+            btnLeft.top,
+            btnLeft.right + pad + bw,
+            btnLeft.bottom)
         btnJump.set(
             w - bw*0.8f - pad,   // 0.8f = giảm 20%
             h - bh*0.8f - pad,
             w - pad,
             h - pad
         )
-
         btnFire.set(
             btnJump.left - pad - bw*0.8f,
             btnJump.top,
@@ -60,12 +68,16 @@ class InputController(private val view: View, context: Context) {
         // Nút vuông nhỏ cho Pause/Mute
         val small = minOf(bw, bh) * 0.4f
         btnPause.set(
-            w - pad - small, pad,
-            w - pad, pad + small
+            w - pad - small,
+            pad,
+            w - pad,
+            pad + small
         )
         btnMute.set(
-            btnPause.left - pad - small, btnPause.top,
-            btnPause.left - pad, btnPause.top + small
+            btnPause.left - pad - small,
+            btnPause.top,
+            btnPause.left - pad,
+            btnPause.top + small
         )
     }
 
