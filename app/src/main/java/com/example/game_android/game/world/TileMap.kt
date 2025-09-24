@@ -21,8 +21,11 @@ class TileMap(private val ctx: Context) {
     var bossStartX = tile * (cols - 10)
     var bossStartY = tile * (rows - 3)
 
+    val tileset = TileSet(ctx)
+
     init {
-        grid = loadAsciiOrGenerate(ctx); scanSpecials()
+        grid = loadAsciiOrGenerate(ctx)
+        scanSpecials()
     }
 
     // -------------------------------
@@ -137,7 +140,7 @@ fun updateBackground(cam: com.example.game_android.game.core.Camera) {
             }
         } catch (_: Exception) {
             Array(rows) { CharArray(cols) { '.' } }.also { g ->
-                val gy = rows - 2
+                val gy = rows - 1
                 for (x in 0 until cols) g[gy][x] = '#'
                 for (x in 0 until cols step 7) g[gy - 1][x] = '#'
                 for (x in 10 until cols - 10 step 14) {
@@ -172,6 +175,13 @@ fun updateBackground(cam: com.example.game_android.game.core.Camera) {
         row in 0 until rows && col in 0 until cols && grid[row][col] == '^'
 
     fun isSolidAtPx(px: Int, py: Int) = isSolidAt(px / tile, py / tile)
+
+    fun isSolidAtPxRect(r: RectF): Boolean {
+        return isSolidAtPx(r.left.toInt(), r.top.toInt()) ||
+                isSolidAtPx(r.right.toInt(), r.top.toInt()) ||
+                isSolidAtPx(r.left.toInt(), r.bottom.toInt()) ||
+                isSolidAtPx(r.right.toInt(), r.bottom.toInt())
+    }
 
     fun moveAndCollide(e: com.example.game_android.game.entities.PhysicsBody) {
         var nx = e.x + e.vx
@@ -228,28 +238,11 @@ fun updateBackground(cam: com.example.game_android.game.core.Camera) {
     }
 
     fun drawTiles(c: Canvas) {
-        val p = Paint()
         for (y in 0 until rows) for (x in 0 until cols) {
-            when (grid[y][x]) {
-                '#' -> {
-                    p.color = Color.rgb(80, 82, 100)
-                    c.drawRect((x * tile).toFloat(),
-                        (y * tile).toFloat(),
-                        ((x + 1) * tile).toFloat(),
-                        ((y + 1) * tile).toFloat(),
-                        p
-                    )
-                }
-                '^' -> {
-                    p.color = Color.rgb(150, 150, 180)
-                    val top = RectF(
-                        (x * tile).toFloat(),
-                        (y * tile).toFloat(),
-                        ((x + 1) * tile).toFloat(),
-                        (y * tile + 6).toFloat()
-                    )
-                    c.drawRect(top, p)
-                }
+            if (grid[y][x] == '#') {
+                val aboveEmpty = y == 0 || grid[y - 1][x] != '#'
+                val bmp = if (aboveEmpty) tileset.grass else tileset.block
+                c.drawBitmap(bmp, (x * tile).toFloat(), (y * tile).toFloat(), null)
             }
         }
     }

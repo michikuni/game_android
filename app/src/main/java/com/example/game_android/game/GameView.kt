@@ -17,9 +17,11 @@ import com.example.game_android.game.world.TileMap
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import androidx.core.graphics.withTranslation
 
 class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback, Runnable {
     private var thread: Thread? = null
+
     @Volatile
     private var running = false
 
@@ -34,14 +36,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private val enemies = mutableListOf<Enemy>().apply {
         addAll(map.spawnPoints.map {
             Enemy(
-                it.first.toFloat(),
-                it.second.toFloat(),
-                context
+                it.first.toFloat(), it.second.toFloat(), context
             )
         })
     }
     private var boss = Boss(map.bossStartX.toFloat(), map.bossStartY.toFloat(), context)
     private val bullets = mutableListOf<Bullet>()
+    private val arrows = mutableListOf<Projectile>()
     private val enemyBullets = mutableListOf<Bullet>()
 
     private val sound = SoundManager(context)
@@ -54,6 +55,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         isFocusable = true
         isFocusableInTouchMode = true
         keepScreenOn = true
+        player.debugShowHitbox = true
     }
 
     // --- Surface callbacks ---
@@ -116,7 +118,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         map.moveAndCollide(player)
 
         // Shooting
-        if (input.fire) player.tryShoot(bullets)
+        if (input.fire) player.tryShoot(arrows)
 
         // Enemies
         enemies.forEach { e ->
@@ -129,9 +131,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             }
             map.moveAndCollide(e)
             if (abs(e.x - player.x) < 340 && abs(e.y - player.y) < 120) e.tryShoot(
-                enemyBullets,
-                player.x,
-                player.y
+                enemyBullets, player.x, player.y
             )
         }
 
@@ -143,6 +143,25 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             }
             map.moveAndCollide(boss)
             boss.tryShoot(enemyBullets, player.x, player.y)
+        }
+
+        // update
+        arrows.forEach { it.update(map.pixelWidth) }
+        arrows.removeAll {
+            it.dead || map.isSolidAtPxRect(it.bounds())
+        }
+
+// collisions (reuse your bullet collision blocks, but with arrows list)
+        arrows.forEach { a ->
+            enemies.forEach { e ->
+                if (e.alive && a.overlaps(e)) {
+                    e.hit(); a.dead = true; sound.playHitEnemy()
+                }
+            }
+            if (boss.alive && a.overlaps(boss)) {
+                boss.hit(); a.dead = true; sound.playHitEnemy()
+                if (!boss.alive) state.victory = true
+            }
         }
 
         // Bullets & collisions
@@ -187,16 +206,25 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             map.updateBackground(camera) // NEW: compute layer offsets from camera.x
             map.drawBackground(c)        // NEW: draw 7-layer looping parallax
 
-            c.save(); c.translate(-camera.x, -camera.y)
-            map.drawTiles(c)
-            enemies.forEach { it.draw(c) }
-            boss.draw(c)
-            bullets.forEach { it.draw(c) }
-            enemyBullets.forEach { it.draw(c) }
-            player.draw(c)
-            c.restore()
+            // If world is shorter than the view, push it down so the floor sits at the bottom.
+            val worldYOffset = (height - map.pixelHeight).coerceAtLeast(0f)
 
-            hud.drawHud(c, player, boss, state, isMuted = sound.isMuted, isBgMuted = sound.isBgMuted)
+            c.withTranslation(-camera.x, -camera.y + worldYOffset) {
+                ;
+                map.drawTiles(this)
+                enemies.forEach { it.draw(this) }
+                boss.draw(this)
+                bullets.forEach { it.draw(this) }
+                enemyBullets.forEach { it.draw(this) }
+                player.draw(this)
+                arrows.forEach { it.draw(this) }
+            }
+
+// draw
+
+            hud.drawHud(
+                c, player, boss, state, isMuted = sound.isMuted, isBgMuted = sound.isBgMuted
+            )
             hud.drawOverlays(c, state) { action ->
                 when (action) {
                     HudRenderer.Action.PauseToggle -> state.paused = !state.paused
@@ -215,9 +243,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         player.reset(map.playerStartX.toFloat(), map.playerStartY.toFloat())
         enemies.clear(); enemies.addAll(map.spawnPoints.map {
             Enemy(
-                it.first.toFloat(),
-                it.second.toFloat(),
-                context
+                it.first.toFloat(), it.second.toFloat(), context
             )
         })
         boss = Boss(map.bossStartX.toFloat(), map.bossStartY.toFloat(), context)
@@ -234,24 +260,25 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
                 // 1) Ưu tiên: xử lý click vào các nút Overlay (Pause/GameOver/Victory)
                 val handledOverlay = hud.handleTouch(
-                    x = x, y = y, state = state,
+                    x = x,
+                    y = y,
+                    state = state,
                     onPauseToggle = { state.paused = !state.paused },
-                    onMuteToggle = {  sound.toggleMute() },
-                    onBgMuteToggle = { sound},
+                    onMuteToggle = { sound.toggleMute() },
+                    onBgMuteToggle = { sound },
                     onExit = { (context as? android.app.Activity)?.finish() },
                     onContinue = { state.paused = false },
                     onRetry = { resetGame() },
-                    onBackToMenu = { (context as? android.app.Activity)?.finish() }
-                )
-                if (handledOverlay) { performClick(); return true }
+                    onBackToMenu = { (context as? android.app.Activity)?.finish() })
+                if (handledOverlay) {
+                    performClick(); return true
+                }
 
                 // 2) Nếu không đụng overlay → chuyển sự kiện cho InputController (HUD: ← → A B II)
                 input.onTouchEvent(event, state)
             }
-            MotionEvent.ACTION_MOVE,
-            MotionEvent.ACTION_UP,
-            MotionEvent.ACTION_POINTER_UP,
-            MotionEvent.ACTION_CANCEL -> {
+
+            MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
                 // HUD controls (giữ ← rồi bấm A, v.v.)
                 input.onTouchEvent(event, state)
             }

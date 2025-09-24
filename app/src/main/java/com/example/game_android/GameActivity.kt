@@ -12,19 +12,20 @@ class GameActivity : AppCompatActivity() {
         sound = SoundManager(applicationContext)
         setContentView(GameView(this))
     }
+
     override fun onResume() {
         super.onResume()
 //        sound.resumeBgmIfEnabled()
     }
+
     override fun onPause() {
         // Nếu muốn tắt nhạc khi app background:
 //        sound.pauseBgm()
         super.onPause()
     }
+
     override fun onDestroy() {
         sound.release()
         super.onDestroy()
     }
-
-
 }
