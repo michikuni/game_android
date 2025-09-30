@@ -32,8 +32,8 @@ class SoundManager(
             .build()
 
         idHitEnemy = soundPool.load(ctx, R.raw.bomb, 1)
-        idPlayerDie = soundPool.load(ctx, R.raw.bomb, 1)
-        bgm = MediaPlayer.create(ctx.applicationContext, R.raw.background).apply {
+        idPlayerDie = soundPool.load(ctx, R.raw.terraria_male_player_hurt_sound, 1)
+        bgm = MediaPlayer.create(ctx.applicationContext, R.raw.hidden_hit__grave).apply {
             isLooping = true   // <-- tự lặp khi chạy hết
             setVolume(1f, 1f)
         }

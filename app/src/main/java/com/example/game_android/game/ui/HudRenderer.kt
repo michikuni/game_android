@@ -11,6 +11,7 @@ import com.example.game_android.game.entities.Player
 import com.example.game_android.game.core.InputController
 import com.example.game_android.game.core.InputController.BtnKind
 import com.example.game_android.game.world.GameState
+import androidx.core.graphics.withRotation
 
 class HudRenderer(private val input: InputController, private val context: Context) {
 
@@ -43,32 +44,84 @@ class HudRenderer(private val input: InputController, private val context: Conte
 
     private fun dp(v: Float) = v * context.resources.displayMetrics.density
 
+    private val heartBmp: Bitmap by lazy {
+        BitmapFactory.decodeResource(context.resources, R.drawable.heart) // heart.png -> R.drawable.heart
+    }
+    private val heartSrcTrim: Rect by lazy {
+        com.example.game_android.game.util.BitmapUtils.computeOpaqueBounds(heartBmp)
+            ?: Rect(0, 0, heartBmp.width, heartBmp.height)
+    }
+    private val heartPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        isFilterBitmap = false // crisp pixel art
+    }
+    private val heartGreyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        isFilterBitmap = false
+        // Tint to dark grey while preserving alpha
+        colorFilter = PorterDuffColorFilter(Color.DKGRAY, PorterDuff.Mode.SRC_IN)
+    }
+
+    // --- Hearts (bitmap sprite with transparent trim) ---
+    val heartSize = dp(32f)         // HUD size for each heart (scaled from 64px source)
+    val heartGap  = dp(8f)          // spacing between hearts
+    val heartsTop = dp(16f)
+    val heartsLeftStart = dp(16f)
+
+    // Arrow sprite caches (trim like Arrow.kt)
+    private val arrowBmp: Bitmap by lazy {
+        BitmapFactory.decodeResource(context.resources, R.drawable.arrow01_100x100)
+    }
+    private val arrowSrcTrim: Rect by lazy {
+        com.example.game_android.game.util.BitmapUtils.computeOpaqueBounds(arrowBmp)
+            ?: Rect(0, 0, arrowBmp.width, arrowBmp.height)
+    }
+    private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        isFilterBitmap = false // crisp pixel art
+    }
+    private val arrowGreyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        isFilterBitmap = false
+        colorFilter = PorterDuffColorFilter(Color.DKGRAY, PorterDuff.Mode.SRC_IN)
+    }
+
     fun drawHud(
         c: Canvas,
         player: Player,
         boss: Boss,
         state: GameState,
         isMuted: Boolean,
-        isBgMuted: Boolean
+        isBgMuted: Boolean,
+        ammoCapacity: Int,
+        ammoCount: Int
     ) {
         // --- Hearts ---
-        val r = RectF(16f, 16f, 48f, 48f)
         repeat(3) { i ->
-            p.color = if (i < player.hp) Color.RED else Color.DKGRAY
-            c.drawRoundRect(
-                r.left + i * 40,
-                r.top,
-                r.right + i * 40,
-                r.bottom,
-                8f, 8f, p
-            )
+            val left = heartsLeftStart + i * (heartSize + heartGap)
+            val dst = RectF(left, heartsTop, left + heartSize, heartsTop + heartSize)
+
+            // choose paint: colored for remaining hp, grey for lost hp
+            val paintForThis = if (i < player.hp) heartPaint else heartGreyPaint
+
+            // draw only the trimmed opaque area of the bitmap, scaled into dst
+            c.drawBitmap(heartBmp, heartSrcTrim, dst, paintForThis)
         }
 
-        // --- Nút âm thanh cạnh hearts ---
-        val iconSize = dp(32f)         // kích thước nút (vuông nhỏ)
-        val margin   = dp(12f)         // khoảng cách với dãy tim
-        val leftOfTopMute = r.left + 3 * 40 + margin   // 3 tim * 40px + margin
-        topMuteRect.set(leftOfTopMute, 16f, leftOfTopMute + iconSize, 16f + iconSize)
+        // --- Ammo (arrows) under hearts ---
+        val ammoSize = dp(24f)          // a bit smaller than hearts
+        val ammoGap  = dp(0f)
+        val ammoTop  = heartsTop + heartSize + dp(6f)
+        val ammoLeftStart = heartsLeftStart
+
+        repeat(ammoCapacity) { i ->
+            val left = ammoLeftStart + i * (ammoSize + ammoGap)
+            val dst  = RectF(left, ammoTop, left + ammoSize, ammoTop + ammoSize)
+
+            // grey if this slot is beyond current ammo
+            val paintForThis = if (i < ammoCount) arrowPaint else arrowGreyPaint
+
+            // the source points RIGHT; rotate +90° around the dst center so it points DOWN
+            c.withRotation(90f, dst.centerX(), dst.centerY()) {
+                drawBitmap(arrowBmp, arrowSrcTrim, dst, paintForThis)
+            }
+        }
 
         val muteIconRes = if (isBgMuted) R.drawable.volume_off_24px else R.drawable.volume_up_24px
         val muteDr = dr(muteIconRes)

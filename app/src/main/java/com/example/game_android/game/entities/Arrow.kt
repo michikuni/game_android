@@ -56,11 +56,10 @@ class Arrow(
 
     override fun update(worldW: Float) {
         x += speed
-        if (x < -64 || x > worldW + 64) dead = true
     }
 
     override fun draw(c: Canvas) {
-        dst.set(x - 20f, y, x + w + 20f, y + h)
+        dst.set(x, y, x + w, y + h)
         if (vx >= 0f) {
             c.drawBitmap(bmp, srcTrim, dst, paint)
         } else {

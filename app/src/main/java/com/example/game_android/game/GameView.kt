@@ -3,6 +3,7 @@ package com.example.game_android.game
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.util.Log
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -55,7 +56,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         isFocusable = true
         isFocusableInTouchMode = true
         keepScreenOn = true
-        player.debugShowHitbox = true
+        //player.debugShowHitbox = true
     }
 
     // --- Surface callbacks ---
@@ -101,15 +102,15 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         // Input → movement
         val accel = 0.8f
         when {
-            input.left && !input.right -> player.vx =
+            input.left && !input.right && !player.isAttacking -> player.vx =
                 max(player.vx - accel, -Constants.PLAYER_MAX_SPD)
 
-            input.right && !input.left -> player.vx =
+            input.right && !input.left && !player.isAttacking -> player.vx =
                 min(player.vx + accel, Constants.PLAYER_MAX_SPD)
 
             else -> player.vx *= 0.8f
         }
-        if (input.jumpPressed(player)) {
+        if (input.jumpPressed(player) && !player.isAttacking) {
             player.vy = -Constants.JUMP_VELOCITY; player.canJump = false
         }
 
@@ -118,7 +119,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         map.moveAndCollide(player)
 
         // Shooting
-        if (input.fire) player.tryShoot(arrows)
+        if (input.fire && !player.isAttacking && player.ammo > 0) player.tryShoot(arrows)
 
         // Enemies
         enemies.forEach { e ->
@@ -145,23 +146,19 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             boss.tryShoot(enemyBullets, player.x, player.y)
         }
 
-        // update
-        arrows.forEach { it.update(map.pixelWidth) }
-        arrows.removeAll {
-            it.dead || map.isSolidAtPxRect(it.bounds())
-        }
-
-// collisions (reuse your bullet collision blocks, but with arrows list)
         arrows.forEach { a ->
             enemies.forEach { e ->
                 if (e.alive && a.overlaps(e)) {
+                    Log.d("GameView", "Arrow hit enemy at ${e.x},${e.y}")
                     e.hit(); a.dead = true; sound.playHitEnemy()
                 }
             }
             if (boss.alive && a.overlaps(boss)) {
+                Log.d("GameView", "Arrow hit BOSS at ${boss.x},${boss.y}")
                 boss.hit(); a.dead = true; sound.playHitEnemy()
                 if (!boss.alive) state.victory = true
             }
+            a.update(map.pixelWidth)
         }
 
         // Bullets & collisions
@@ -195,6 +192,28 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
         // Camera follow
         camera.follow(player.x, player.y, width, height, map.pixelWidth, map.pixelHeight)
+        // ---- Cull arrows by current on-screen viewport (with a small margin) ----
+        run {
+            val worldYOffset =
+                (height - map.pixelHeight).coerceAtLeast(0f) // same offset you use when drawing
+            val margin = 64f
+
+            // Camera viewport in world coords (adjust top with worldYOffset to match draw-space)
+            val left = camera.x - margin
+            val right = camera.x + width + margin
+            val top = camera.y - worldYOffset - margin
+            val bottom = top + height + margin
+
+           arrows.removeAll { a ->
+               if (a.dead || map.isSolidAtPxRect(a.bounds()) ||
+                   (a.x + a.w) < left || a.x > right || (a.y + a.h) < top || a.y > bottom) {
+                   Log.d("GameView", "Culling arrow at ${a.x},${a.y}")
+                   true
+               } else {
+                   false
+               }
+           }
+        }
     }
 
     // --- Render frame ---
@@ -216,14 +235,20 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 boss.draw(this)
                 bullets.forEach { it.draw(this) }
                 enemyBullets.forEach { it.draw(this) }
-                player.draw(this)
+                player.draw(this, gameState = state)
                 arrows.forEach { it.draw(this) }
             }
 
-// draw
-
+            // draw
             hud.drawHud(
-                c, player, boss, state, isMuted = sound.isMuted, isBgMuted = sound.isBgMuted
+                c,
+                player,
+                boss,
+                state,
+                isMuted = sound.isMuted,
+                isBgMuted = sound.isBgMuted,
+                player.maxAmmo,
+                player.ammo
             )
             hud.drawOverlays(c, state) { action ->
                 when (action) {

@@ -6,5 +6,5 @@ object Constants {
     const val WORLD_ROWS = 20;
     const val GRAVITY = 0.5f;
     const val PLAYER_MAX_SPD = 3.5f;
-    const val JUMP_VELOCITY = 9.5f
+    const val JUMP_VELOCITY = 14f
 }

@@ -7,6 +7,7 @@ import com.example.game_android.R
 import androidx.core.graphics.withSave
 import com.example.game_android.game.util.BitmapUtils
 import com.example.game_android.game.util.DebugDrawUtils
+import com.example.game_android.game.world.GameState
 import kotlin.math.abs
 
 class Player(
@@ -20,7 +21,7 @@ class Player(
     override var w = 1f
     override var h = 1f
     private val tile = com.example.game_android.game.core.Constants.TILE.toFloat()
-    private val heightInTiles = 4f
+    private val heightInTiles = 3f
     override var canJump = false
     override var wasJump = false
 
@@ -89,7 +90,7 @@ class Player(
         Anim.IDLE to loadStrip(R.drawable.soldier_idle, 2, loop = true),
         Anim.WALK to loadStrip(R.drawable.soldier_walk, 3, loop = true),
         Anim.ATTACK to loadStrip(R.drawable.soldier_attack03, 1, loop = false),
-        Anim.HURT to loadStrip(R.drawable.soldier_hurt, 6, loop = false)
+        Anim.HURT to loadStrip(R.drawable.soldier_hurt, 2, loop = false)
     )
 
     init {
@@ -127,13 +128,15 @@ class Player(
 
     // one-shot timers
     private var hurtTimer = 0
-    private val hurtDuration = 20
+    private val hurtDuration = 15
 
     private var attackTimer = 0
     private val attackCooldown = 30
 
     // quiver & firing
-    private val quiver = Quiver(maxAmmo = 5, cooldownTicks = 90)
+    val maxAmmo = 5
+    private val quiver = Quiver(maxAmmo = maxAmmo, cooldownTicks = 90)
+    val ammo get() = quiver.ammo()
     private var queuedOut: MutableList<Projectile>? = null
     private var queuedDir = 1
     private var firedThisAttack = false
@@ -144,6 +147,7 @@ class Player(
         return s.frames * s.speed
     }
 
+    val isAttacking: Boolean get() = attackTimer > 0 // val is read only, var can be changed
     fun tryShoot(out: MutableList<Projectile>) {
         if (!quiver.canFire()) return
         val dir = if (vx > 0.05f) 1 else if (vx < -0.05f) -1 else facing
@@ -158,12 +162,12 @@ class Player(
         queuedDir = dir
     }
 
-    fun draw(c: Canvas) {
+    fun draw(c: Canvas, gameState: GameState) {
         // Update facing
         if (vx > 0.05f) facing = 1 else if (vx < -0.05f) facing = -1
 
         // Priority: HURT > ATTACK > WALK > IDLE
-        val moving = kotlin.math.abs(vx) > 0.12f || !canJump
+        val moving = abs(vx) > 0.12f || !canJump
         val nextAnim = when {
             hurtTimer > 0 -> Anim.HURT
             attackTimer > 0 -> Anim.ATTACK
@@ -211,9 +215,9 @@ class Player(
         // --- Fire when reaching the attack keyframe ---
         if (anim == Anim.ATTACK && !firedThisAttack && frame >= ATTACK_FIRE_FRAME) {
             val out = queuedOut
-            if (out != null && quiver.tryConsume()) {
+            if (out != null && quiver.tryConsume(gameState)) {
                 val spawnX = x + w / 2f
-                val spawnY = y + h * 0.53f
+                val spawnY = y + h * 0.5f
                 val speed = 12.0f
                 val showHitbox = debugShowHitbox
                 out.add(Arrow(spawnX, spawnY, speed * queuedDir, ctx, showHitbox))
@@ -223,7 +227,7 @@ class Player(
         }
 
         // tick quiver reloads
-        quiver.tick()
+        quiver.tick(gameState)
 
         c.withSave {
             if (facing == -1) c.scale(-1f, 1f, dstRect.centerX(), dstRect.centerY())
