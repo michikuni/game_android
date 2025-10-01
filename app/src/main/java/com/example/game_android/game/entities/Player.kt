@@ -88,7 +88,7 @@ class Player(
     // Load strips (tweak speeds to taste)
     private val strips: Map<Anim, Strip> = mapOf(
         Anim.IDLE to loadStrip(R.drawable.soldier_idle, 2, loop = true),
-        Anim.WALK to loadStrip(R.drawable.soldier_walk, 3, loop = true),
+        Anim.WALK to loadStrip(R.drawable.soldier_walk, 2, loop = true),
         Anim.ATTACK to loadStrip(R.drawable.soldier_attack03, 1, loop = false),
         Anim.HURT to loadStrip(R.drawable.soldier_hurt, 2, loop = false)
     )

@@ -168,7 +168,7 @@ class InputController(private val view: View, context: Context) {
         }
     }
 
-    enum class BtnKind { Left, Right, Jump, Fire, Pause, Mute }
+    enum class BtnKind { Left, Right, Jump, Fire, Pause }
     data class ButtonSpec(val rect: RectF, val kind: BtnKind)
 
     fun buttons(): List<ButtonSpec> = listOf(
@@ -177,7 +177,6 @@ class InputController(private val view: View, context: Context) {
         ButtonSpec(btnJump,  BtnKind.Jump),
         ButtonSpec(btnFire,  BtnKind.Fire),
         ButtonSpec(btnPause, BtnKind.Pause),
-        ButtonSpec(btnMute,  BtnKind.Mute)
     )
 
     fun jumpPressed(player: Player): Boolean {
@@ -187,7 +186,5 @@ class InputController(private val view: View, context: Context) {
     }
 
     fun isPauseHit(x: Float, y: Float): Boolean = btnPause.containsWithSlop(x, y, touchSlopPx)
-    fun isMuteHit(x: Float, y: Float): Boolean = btnMute.containsWithSlop(x, y, touchSlopPx)
-    fun isBgMuteHit(x: Float, y: Float): Boolean = btnMute.containsWithSlop(x, y, touchSlopPx)
 
 }

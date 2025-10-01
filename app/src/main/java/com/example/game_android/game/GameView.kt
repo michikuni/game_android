@@ -1,8 +1,6 @@
 package com.example.game_android.game
 
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
 import android.util.Log
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -10,7 +8,6 @@ import android.view.SurfaceView
 import com.example.game_android.game.core.Camera
 import com.example.game_android.game.core.Constants
 import com.example.game_android.game.core.InputController
-import com.example.game_android.game.core.SoundManager
 import com.example.game_android.game.entities.*
 import com.example.game_android.game.ui.HudRenderer
 import com.example.game_android.game.world.GameState
@@ -19,6 +16,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import androidx.core.graphics.withTranslation
+import com.example.game_android.game.core.SoundManager
 
 class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback, Runnable {
     private var thread: Thread? = null
@@ -51,6 +49,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     // Rendering helpers
     private val hud = HudRenderer(input, context)
 
+    private var footstepStreamId: Int = 0
+
     init {
         holder.addCallback(this)
         isFocusable = true
@@ -63,7 +63,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     override fun surfaceCreated(holder: SurfaceHolder) {
         running = true
         thread = Thread(this).apply { start() }
-        sound.startBgmLoop()
+        sound.setBgmMasterAttenuation(0.1f)
+        sound.setSfxMasterAttenuation(0.5f)
+        sound.startBgmIfNeeded()
     }
 
 
@@ -114,12 +116,44 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             player.vy = -Constants.JUMP_VELOCITY; player.canJump = false
         }
 
+        // Consider walking only when on ground, moving, and not attacking
+        val speed = abs(player.vx)
+        val isWalking =
+            player.canJump && speed > 0.2f && !player.isAttacking  // threshold avoids flicker
+
+        if (isWalking) {
+            // Start loop if not running
+            if (footstepStreamId == 0) {
+                // Volume scales mildly with speed; tune 0.35f..0.8f as you like
+                val baseVol = 0.35f + 0.45f * (speed / Constants.PLAYER_MAX_SPD).coerceIn(0f, 1f)
+                // Slightly faster steps as you move faster
+                val rate = 0.9f + 0.3f * (speed / Constants.PLAYER_MAX_SPD).coerceIn(0f, 1f)
+                footstepStreamId =
+                    sound.playLoop(SoundManager.Sfx.PlayerWalk, volume = baseVol, rate = rate)
+            } else {
+                // Update loop volume/rate continuously (smooth with same mapping)
+                val baseVol = 0.35f + 0.45f * (speed / Constants.PLAYER_MAX_SPD).coerceIn(0f, 1f)
+                val rate = 0.9f + 0.3f * (speed / Constants.PLAYER_MAX_SPD).coerceIn(0f, 1f)
+                sound.setLoopVolume(footstepStreamId, baseVol)
+                sound.setLoopRate(footstepStreamId, rate)
+            }
+        } else {
+            // Not walking → stop if running
+            if (footstepStreamId != 0) {
+                sound.stopLoop(footstepStreamId)
+                footstepStreamId = 0
+            }
+        }
+
         // Physics
         player.vy += Constants.GRAVITY
         map.moveAndCollide(player)
 
         // Shooting
-        if (input.fire && !player.isAttacking && player.ammo > 0) player.tryShoot(arrows)
+        if (input.fire && !player.isAttacking && player.ammo > 0) {
+            player.tryShoot(arrows)
+            sound.play(SoundManager.Sfx.PlayerShoot)
+        }
 
         // Enemies
         enemies.forEach { e ->
@@ -150,12 +184,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             enemies.forEach { e ->
                 if (e.alive && a.overlaps(e)) {
                     Log.d("GameView", "Arrow hit enemy at ${e.x},${e.y}")
-                    e.hit(); a.dead = true; sound.playHitEnemy()
+                    e.hit(); a.dead = true; sound.play(SoundManager.Sfx.ArrowHitEnemy)
                 }
             }
             if (boss.alive && a.overlaps(boss)) {
                 Log.d("GameView", "Arrow hit BOSS at ${boss.x},${boss.y}")
-                boss.hit(); a.dead = true; sound.playHitEnemy()
+                boss.hit(); a.dead = true; sound.play(SoundManager.Sfx.ArrowHitEnemy)
                 if (!boss.alive) state.victory = true
             }
             a.update(map.pixelWidth)
@@ -171,13 +205,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 if (e.alive && b.overlaps(e)) {
                     e.hit()
                     b.dead = true
-                    sound.playHitEnemy()
+                    sound.play(SoundManager.Sfx.ArrowHitEnemy)
                 }
             }
             if (boss.alive && b.overlaps(boss)) {
                 boss.hit()
                 b.dead = true
-                sound.playHitEnemy()
+                sound.play(SoundManager.Sfx.ArrowHitEnemy)
                 if (!boss.alive) state.victory = true
             }
         }
@@ -185,7 +219,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             if (b.overlaps(player)) {
                 player.hit()
                 b.dead = true
-                sound.playPlayerDie()
+                sound.play(SoundManager.Sfx.PlayerHurt)
                 if (player.hp <= 0) state.gameOver = true
             }
         }
@@ -204,15 +238,17 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             val top = camera.y - worldYOffset - margin
             val bottom = top + height + margin
 
-           arrows.removeAll { a ->
-               if (a.dead || map.isSolidAtPxRect(a.bounds()) ||
-                   (a.x + a.w) < left || a.x > right || (a.y + a.h) < top || a.y > bottom) {
-                   Log.d("GameView", "Culling arrow at ${a.x},${a.y}")
-                   true
-               } else {
-                   false
-               }
-           }
+            arrows.removeAll { a ->
+                if (map.isSolidAtPxRect(a.bounds())) {
+                    Log.d("GameView", "Culling arrow at ${a.x},${a.y}")
+                    sound.playArrowHitWall()
+                    true
+                } else if (a.dead || (a.x + a.w) < left || a.x > right || (a.y + a.h) < top || a.y > bottom) {
+                    true
+                } else {
+                    false
+                }
+            }
         }
     }
 
@@ -241,24 +277,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
             // draw
             hud.drawHud(
-                c,
-                player,
-                boss,
-                state,
-                isMuted = sound.isMuted,
-                isBgMuted = sound.isBgMuted,
-                player.maxAmmo,
-                player.ammo
+                c, player, boss, player.maxAmmo, player.ammo
             )
-            hud.drawOverlays(c, state) { action ->
-                when (action) {
-                    HudRenderer.Action.PauseToggle -> state.paused = !state.paused
-                    HudRenderer.Action.Exit -> (context as? android.app.Activity)?.finish()
-                    HudRenderer.Action.Continue -> state.paused = false
-                    HudRenderer.Action.Retry -> resetGame()
-                    HudRenderer.Action.BackToMenu -> (context as? android.app.Activity)?.finish()
-                }
-            }
+            hud.drawOverlays(c, state, sound.bgmVolumeUi, sound.sfxVolumeUi)
         } finally {
             holder.unlockCanvasAndPost(c)
         }
@@ -278,36 +299,30 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
-                val x = event.getX(event.actionIndex)
-                val y = event.getY(event.actionIndex)
+        val x = event.x
+        val y = event.y
 
-                // 1) Ưu tiên: xử lý click vào các nút Overlay (Pause/GameOver/Victory)
-                val handledOverlay = hud.handleTouch(
-                    x = x,
-                    y = y,
-                    state = state,
-                    onPauseToggle = { state.paused = !state.paused },
-                    onMuteToggle = { sound.toggleMute() },
-                    onBgMuteToggle = { sound },
-                    onExit = { (context as? android.app.Activity)?.finish() },
-                    onContinue = { state.paused = false },
-                    onRetry = { resetGame() },
-                    onBackToMenu = { (context as? android.app.Activity)?.finish() })
-                if (handledOverlay) {
-                    performClick(); return true
-                }
-
-                // 2) Nếu không đụng overlay → chuyển sự kiện cho InputController (HUD: ← → A B II)
-                input.onTouchEvent(event, state)
-            }
-
-            MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
-                // HUD controls (giữ ← rồi bấm A, v.v.)
-                input.onTouchEvent(event, state)
-            }
+        // 1) Ưu tiên: xử lý click vào các nút Overlay (Pause/GameOver/Victory)
+        val handledOverlay = hud.handleTouch(
+            event.actionMasked,
+            x = x,
+            y = y,
+            state = state,
+            onPauseToggle = {
+                state.paused = !state.paused
+            },
+            onExit = { (context as? android.app.Activity)?.finish() },
+            onContinue = { state.paused = false },
+            onRetry = { resetGame() },
+            onBackToMenu = { (context as? android.app.Activity)?.finish() },
+            onSetBgmVolume = { v -> sound.setBgmVolume(v) },
+            onSetSfxVolume = { v -> sound.setSfxVolume(v) })
+        if (handledOverlay) {
+            performClick(); return true
         }
+
+        // 2) Nếu không đụng overlay → chuyển sự kiện cho InputController (HUD: ← → A B II)
+        input.onTouchEvent(event, state)
         return true
     }
 
