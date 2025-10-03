@@ -17,7 +17,7 @@ class Arrow(
     override var dead = false
     private val speed = vx
     private val bmp: Bitmap =
-        BitmapFactory.decodeResource(ctx.resources, R.drawable.arrow01_100x100)
+        BitmapUtils.decodePixelArt(ctx, R.drawable.arrow01_100x100)
 
     // --- find tight opaque bounds inside the bitmap (alpha != 0) ---
     private val srcTrim: Rect =
@@ -25,7 +25,7 @@ class Arrow(
 
     // Size in world units: pick width in tiles; keep aspect from the TRIMMED rect
     private val tile = com.example.game_android.game.core.Constants.TILE.toFloat()
-    private val widthInTiles = 2f
+    private val widthInTiles = 3f
     override var w = widthInTiles * tile
     override var h = w * (srcTrim.height().toFloat() / srcTrim.width().toFloat())
 

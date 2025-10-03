@@ -56,7 +56,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         isFocusable = true
         isFocusableInTouchMode = true
         keepScreenOn = true
-        //player.debugShowHitbox = true
+        player.debugShowHitbox = true
     }
 
     // --- Surface callbacks ---

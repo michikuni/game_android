@@ -21,7 +21,7 @@ class Player(
     override var w = 1f
     override var h = 1f
     private val tile = com.example.game_android.game.core.Constants.TILE.toFloat()
-    private val heightInTiles = 3f
+    private val heightInTiles = 4f
     override var canJump = false
     override var wasJump = false
 
@@ -67,7 +67,7 @@ class Player(
     )
 
     private fun loadStrip(resId: Int, speed: Int, loop: Boolean = true): Strip {
-        val bmp = BitmapFactory.decodeResource(ctx.resources, resId)
+        val bmp = BitmapUtils.decodePixelArt(ctx, resId)
         val fh = bmp.height
         val frames = (bmp.width / fh).coerceAtLeast(1)
         val fw = bmp.width / frames
@@ -99,7 +99,7 @@ class Player(
         val aspect = trim0.width().toFloat() / trim0.height().toFloat() // w/h from TRIMMED art
 
         h = heightInTiles * tile
-        w = h * aspect
+        w = h * aspect * 0.5f
 
         // If you kept a renderScale, set it to 1f so visual == physics.
         // Otherwise, increase heightInTiles to make the character bigger.
@@ -135,7 +135,7 @@ class Player(
 
     // quiver & firing
     val maxAmmo = 5
-    private val quiver = Quiver(maxAmmo = maxAmmo, cooldownTicks = 90)
+    private val quiver = Quiver(maxAmmo = maxAmmo, cooldownTicks = 60)
     val ammo get() = quiver.ammo()
     private var queuedOut: MutableList<Projectile>? = null
     private var queuedDir = 1
@@ -217,8 +217,8 @@ class Player(
             val out = queuedOut
             if (out != null && quiver.tryConsume(gameState)) {
                 val spawnX = x + w / 2f
-                val spawnY = y + h * 0.5f
-                val speed = 12.0f
+                val spawnY = y + h * 0.47f
+                val speed = 14.0f
                 val showHitbox = debugShowHitbox
                 out.add(Arrow(spawnX, spawnY, speed * queuedDir, ctx, showHitbox))
             }

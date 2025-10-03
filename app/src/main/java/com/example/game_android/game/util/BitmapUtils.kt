@@ -1,9 +1,20 @@
 package com.example.game_android.game.util
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Rect
+import android.content.Context
 
 object BitmapUtils {
+    fun decodePixelArt(ctx: Context, @androidx.annotation.DrawableRes resId: Int): Bitmap {
+        val opts = BitmapFactory.Options().apply {
+            inScaled = false                 // no density bucket scaling
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeResource(ctx.resources, resId, opts).apply {
+            density = Bitmap.DENSITY_NONE    // treat as density-less
+        }
+    }
     fun computeOpaqueBounds(b: Bitmap): Rect? {
         val w = b.width
         val h = b.height

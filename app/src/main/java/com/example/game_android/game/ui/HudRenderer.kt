@@ -16,6 +16,7 @@ import com.example.game_android.game.core.InputController.BtnKind
 import com.example.game_android.game.world.GameState
 import androidx.core.graphics.withRotation
 import androidx.core.graphics.toColorInt
+import com.example.game_android.game.util.BitmapUtils
 
 class HudRenderer(private val input: InputController, private val context: Context) {
 
@@ -97,7 +98,7 @@ class HudRenderer(private val input: InputController, private val context: Conte
     private fun dp(v: Float) = v * context.resources.displayMetrics.density
 
     private val heartBmp: Bitmap by lazy {
-        BitmapFactory.decodeResource(context.resources, R.drawable.heart) // heart.png -> R.drawable.heart
+        BitmapUtils.decodePixelArt(context, R.drawable.heart) // heart.png -> R.drawable.heart
     }
     private val heartSrcTrim: Rect by lazy {
         com.example.game_android.game.util.BitmapUtils.computeOpaqueBounds(heartBmp)
@@ -121,7 +122,7 @@ class HudRenderer(private val input: InputController, private val context: Conte
 
     // Arrow sprite caches (trim like Arrow.kt)
     private val arrowBmp: Bitmap by lazy {
-        BitmapFactory.decodeResource(context.resources, R.drawable.arrow01_100x100)
+        BitmapUtils.decodePixelArt(context, R.drawable.arrow01_100x100)
     }
     private val arrowSrcTrim: Rect by lazy {
         com.example.game_android.game.util.BitmapUtils.computeOpaqueBounds(arrowBmp)

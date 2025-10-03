@@ -6,7 +6,7 @@ import com.example.game_android.game.world.GameState
 
 class Quiver(
     private val maxAmmo: Int = 5,
-    private val cooldownTicks: Int = 90  // 1.5s at 60 FPS; tweak
+    private val cooldownTicks: Int = 30, // 0.5s at 60fps
 ) {
     private var available = maxAmmo
     private val reloading = ArrayDeque<Int>() // each entry = ticks remaining
@@ -17,6 +17,7 @@ class Quiver(
         val n = reloading.size
         repeat(n) {
             var t = reloading.removeFirst() - 1
+            Log.d("Quiver", "tick: reloading arrow, $t ticks left")
             if (t <= 0) {
                 available = (available + 1).coerceAtMost(maxAmmo)
             } else {
