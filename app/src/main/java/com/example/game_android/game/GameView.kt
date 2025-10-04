@@ -5,18 +5,24 @@ import android.util.Log
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import androidx.core.graphics.withTranslation
 import com.example.game_android.game.core.Camera
 import com.example.game_android.game.core.Constants
 import com.example.game_android.game.core.InputController
-import com.example.game_android.game.entities.*
+import com.example.game_android.game.core.SoundManager
+import com.example.game_android.game.entities.Boss
+import com.example.game_android.game.entities.Bullet
+import com.example.game_android.game.entities.Enemy
+import com.example.game_android.game.entities.Fireball
+import com.example.game_android.game.entities.Player
+import com.example.game_android.game.entities.Projectile
+import com.example.game_android.game.entities.Witch
 import com.example.game_android.game.ui.HudRenderer
 import com.example.game_android.game.world.GameState
 import com.example.game_android.game.world.TileMap
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import androidx.core.graphics.withTranslation
-import com.example.game_android.game.core.SoundManager
 
 class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback, Runnable {
     private var thread: Thread? = null
@@ -32,6 +38,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     // World & Entities
     private val map = TileMap(context)
     private val player = Player(map.playerStartX.toFloat(), map.playerStartY.toFloat(), context)
+    private val witches = mutableListOf<Witch>()
     private val enemies = mutableListOf<Enemy>().apply {
         addAll(map.spawnPoints.map {
             Enemy(
@@ -42,7 +49,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private var boss = Boss(map.bossStartX.toFloat(), map.bossStartY.toFloat(), context)
     private val bullets = mutableListOf<Bullet>()
     private val arrows = mutableListOf<Projectile>()
-    private val enemyBullets = mutableListOf<Bullet>()
+    private val enemyBullets = mutableListOf<Projectile>()
 
     private val sound = SoundManager(context)
 
@@ -56,7 +63,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         isFocusable = true
         isFocusableInTouchMode = true
         keepScreenOn = true
-        player.debugShowHitbox = true
+        initWitches()
+        //player.debugShowHitbox = true
+        //witches.forEach { witch -> witch.showHitbox = true }
     }
 
     // --- Surface callbacks ---
@@ -84,8 +93,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     // --- Game loop (fixed-step 60 FPS) ---
     override fun run() {
-        var last = System.nanoTime();
-        val step = 1_000_000_000.0 / 60.0;
+        var last = System.nanoTime()
+        val step = 1_000_000_000.0 / 60.0
         var acc = 0.0
         while (running) {
             val now = System.nanoTime(); acc += (now - last); last = now
@@ -169,6 +178,31 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 enemyBullets, player.x, player.y
             )
         }
+        // Witches
+        witches.forEach { w ->
+            if (!w.alive) return@forEach
+            w.vy += Constants.GRAVITY
+            // Update AI (no jump yet) — onGround = w.canJump after collision
+            // But we need to collide first to know canJump → do a tentative AI step, then collide, then finalize anim
+            // Simple approach: do AI using last frame canJump, then collide, then refresh anim state.
+            val onGroundPrev = w.canJump
+            w.updateAiAndAnim(player.x, player.y, onGroundPrev)
+            map.moveAndCollide(w)
+            w.updateAiAndAnim(player.x, player.y, w.canJump) // refresh anim if ground state changed
+
+            // LoS is optional; if you have a helper, gate by LoS. Here we just use range.
+            val inRange =
+                abs((player.x + player.w * 0.5f) - (w.x + w.w * 0.5f)) < 520f && abs(
+                    (player.y + player.h * 0.5f) - (w.y + w.h * 0.5f)
+                ) < 280f
+            if (inRange) {
+                w.tryShootFireball(
+                    enemyBullets /* <- shared bucket */,
+                    player.x + player.w * 0.5f,
+                    player.y + player.h * 0.4f
+                )
+            }
+        }
 
         // Boss
         if (boss.alive) {
@@ -184,7 +218,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             enemies.forEach { e ->
                 if (e.alive && a.overlaps(e)) {
                     Log.d("GameView", "Arrow hit enemy at ${e.x},${e.y}")
-                    e.hit(); a.dead = true; sound.play(SoundManager.Sfx.ArrowHitEnemy)
+                    e.hit(); a.dead = true; sound.playArrowHitEnemy()
+                }
+            }
+            witches.forEach { w ->
+                if (w.alive && a.overlaps(w)) {
+                    sound.playArrowHitEnemy()
+                    w.hit(); a.dead = true;
                 }
             }
             if (boss.alive && a.overlaps(boss)) {
@@ -199,7 +239,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         bullets.forEach { it.update(map.pixelWidth) }
         enemyBullets.forEach { it.update(map.pixelWidth) }
         bullets.removeAll { it.dead || map.isSolidAtPx(it.x.toInt(), it.y.toInt()) }
-        enemyBullets.removeAll { it.dead || map.isSolidAtPx(it.x.toInt(), it.y.toInt()) }
+
         bullets.forEach { b ->
             enemies.forEach { e ->
                 if (e.alive && b.overlaps(e)) {
@@ -217,10 +257,22 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         }
         enemyBullets.forEach { b ->
             if (b.overlaps(player)) {
-                player.hit()
-                b.dead = true
-                sound.play(SoundManager.Sfx.PlayerHurt)
-                if (player.hp <= 0) state.gameOver = true
+                if (b is Fireball) {
+                    // Deal damage once, then explode (don’t kill immediately)
+                    if (!b.alreadyDamagedPlayer()) {
+                        player.hit()
+                        sound.play(SoundManager.Sfx.PlayerHurt)
+                        sound.playFireballExplode()
+                        if (player.hp <= 0) state.gameOver = true
+                    }
+                    b.startExplode(hitPlayer = true)
+                } else {
+                    // legacy bullets
+                    player.hit()
+                    b.dead = true
+                    sound.play(SoundManager.Sfx.PlayerHurt)
+                    if (player.hp <= 0) state.gameOver = true
+                }
             }
         }
 
@@ -250,6 +302,66 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 }
             }
         }
+
+        // --- Enemy projectiles: update, sweep-collide with tiles, keep during explosion ---
+        run {
+            enemyBullets.forEach { b ->
+                val oldX = b.x
+                val oldY = b.y
+
+                // Step the projectile (Fireball also advances animation here)
+                b.update(map.pixelWidth)
+
+                // --- Tile collision: Fireball explodes, others get removed later ---
+                if (b is Fireball && !b.isExploding()) {
+                    val dx = b.x - oldX
+                    val dy = b.y - oldY
+
+                    // Sweep to avoid tunneling
+                    val stepLen = (Constants.TILE.toFloat() * 0.25f).coerceAtLeast(
+                        2f
+                    )
+                    val steps = max(
+                        1, (max(
+                            abs(dx), abs(dy)
+                        ) / stepLen).toInt()
+                    )
+
+                    var hit = false
+                    var hitX = b.x
+                    var hitY = b.y
+
+                    for (i in 1..steps) {
+                        val t = i / steps.toFloat()
+                        val tx = oldX + dx * t
+                        val ty = oldY + dy * t
+                        val rect = android.graphics.RectF(tx, ty, tx + b.w, ty + b.h)
+                        if (map.isSolidAtPxRect(rect)) {
+                            hit = true; hitX = tx; hitY = ty; break
+                        }
+                    }
+
+                    if (hit) {
+                        b.x = hitX; b.y = hitY
+                        b.startExplode(hitPlayer = false)
+                        Log.d("GameView", "Fireball hit wall at ${b.x},${b.y}")
+                        sound.playFireballExplode()
+                    }
+                }
+            }
+
+            // Remove only when finished:
+            enemyBullets.removeAll { b ->
+                when (b) {
+                    is Fireball -> b.dead  // keep while exploding
+                    else -> (b.dead || map.isSolidAtPxRect(b.bounds())) // legacy bullets: old behavior
+                }
+            }
+        }
+
+        run {
+            witches.removeAll { it.isDeadAndGone() }
+        }
     }
 
     // --- Render frame ---
@@ -265,9 +377,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             val worldYOffset = (height - map.pixelHeight).coerceAtLeast(0f)
 
             c.withTranslation(-camera.x, -camera.y + worldYOffset) {
-                ;
                 map.drawTiles(this)
+                map.drawDebugTiles(this, camera.x, camera.y, width, height)
                 enemies.forEach { it.draw(this) }
+                witches.forEach { it.draw(this) }
                 boss.draw(this)
                 bullets.forEach { it.draw(this) }
                 enemyBullets.forEach { it.draw(this) }
@@ -287,6 +400,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     private fun resetGame() {
         player.reset(map.playerStartX.toFloat(), map.playerStartY.toFloat())
+        initWitches()
         enemies.clear(); enemies.addAll(map.spawnPoints.map {
             Enemy(
                 it.first.toFloat(), it.second.toFloat(), context
@@ -324,6 +438,21 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         // 2) Nếu không đụng overlay → chuyển sự kiện cho InputController (HUD: ← → A B II)
         input.onTouchEvent(event, state)
         return true
+    }
+
+    private fun initWitches() {
+        witches.clear(); witches.addAll(map.witchSpawns.map { (sx, sy) ->
+            Witch(
+                sx.toFloat(),
+                sy.toFloat(),
+                context
+            )
+        })
+        witches.forEach { witch ->
+            witch.onDeath = { sound.playWitchDie() }
+            witch.onHurt = { sound.play(SoundManager.Sfx.WitchHurt) }
+            witch.onThrowFireball = { sound.play(SoundManager.Sfx.FireballShoot) }
+        }
     }
 
     override fun performClick(): Boolean {

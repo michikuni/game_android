@@ -1,12 +1,15 @@
 package com.example.game_android.game.world
 
 import android.content.Context
-import android.graphics.*
-import com.example.game_android.game.core.Constants
-import com.example.game_android.R
-import com.example.game_android.game.entities.PhysicsBody
-import com.example.game_android.game.entities.Cloud
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import androidx.core.graphics.scale
+import com.example.game_android.R
+import com.example.game_android.game.core.Constants
 
 class TileMap(private val ctx: Context) {
     val cols = Constants.WORLD_COLS
@@ -18,6 +21,7 @@ class TileMap(private val ctx: Context) {
     var playerStartX = tile * 2
     var playerStartY = tile * (rows - 3)
     val spawnPoints = mutableListOf<Pair<Int, Int>>()
+    val witchSpawns = mutableListOf<Pair<Int, Int>>()
     var bossStartX = tile * (cols - 10)
     var bossStartY = tile * (rows - 3)
 
@@ -32,15 +36,100 @@ class TileMap(private val ctx: Context) {
     // --- NEW: Parallax background ---
     // -------------------------------
 
-        private data class ParallaxLayer(
-            val bmp: Bitmap,
-            val factor: Float,    // 1.0 = fastest (closest), smaller = farther/slower
-            var offsetX: Float = 0f
-        )
+    private data class ParallaxLayer(
+        val bmp: Bitmap,
+        val factor: Float,    // 1.0 = fastest (closest), smaller = farther/slower
+        var offsetX: Float = 0f
+    )
 
     private var parallaxLayers: List<ParallaxLayer>? = null
     private var viewW: Int = 0
     private var viewH: Int = 0
+
+    // --- Debug toggles (flip these at runtime as you like) ---
+    var debugShowGrid = false
+    var debugShowSolids = false
+    var debugShowIndices = false
+
+    // --- Debug paints ---
+    private val dbgGridPaint = Paint().apply {
+        style = Paint.Style.STROKE
+        color = Color.argb(120, 120, 200, 255) // cyan-ish
+        strokeWidth = 1f
+        isAntiAlias = false
+    }
+
+    private val dbgSolidFill = Paint().apply {
+        style = Paint.Style.FILL
+        color = Color.argb(60, 255, 0, 0) // translucent red
+        isAntiAlias = false
+    }
+
+    private val dbgSolidStroke = Paint().apply {
+        style = Paint.Style.STROKE
+        color = Color.argb(180, 255, 50, 50)
+        strokeWidth = 2f
+        isAntiAlias = false
+    }
+
+    private val dbgIndexPaint = Paint().apply {
+        color = Color.WHITE
+        textSize = (tile * 0.35f)
+        isAntiAlias = true
+        setShadowLayer(3f, 0f, 0f, Color.BLACK)
+    }
+
+
+    private fun visibleRange(camX: Float, camY: Float, viewW: Int, viewH: Int): IntArray {
+        val c0 = (camX / tile).toInt().coerceIn(0, cols - 1)
+        val c1 = ((camX + viewW) / tile).toInt().coerceIn(0, cols - 1)
+        val r0 = (camY / tile).toInt().coerceIn(0, rows - 1)
+        val r1 = ((camY + viewH) / tile).toInt().coerceIn(0, rows - 1)
+        return intArrayOf(c0, c1, r0, r1)
+    }
+
+    fun drawDebugTiles(c: Canvas, camX: Float, camY: Float, viewW: Int, viewH: Int) {
+        if (!debugShowGrid && !debugShowSolids && !debugShowIndices) return
+
+        val (c0, c1, r0, r1) = visibleRange(camX, camY, viewW, viewH)
+
+        // Draw per-tile overlays just for visible range
+        for (r in r0..r1) {
+            for (cix in c0..c1) {
+                val left = (cix * tile).toFloat()
+                val top  = (r * tile).toFloat()
+                val right = left + tile
+                val bottom = top + tile
+
+                val ch = grid[r][cix]
+
+                // Solid tiles: semi-transparent fill + outline
+                if (debugShowSolids && isSolidChar(ch)) {
+                    c.drawRect(left, top, right, bottom, dbgSolidFill)
+                    c.drawRect(left, top, right, bottom, dbgSolidStroke)
+                }
+
+                // Grid lines
+                if (debugShowGrid) {
+                    c.drawRect(left, top, right, bottom, dbgGridPaint)
+                }
+
+                // Row/Col indices in the corner
+                if (debugShowIndices) {
+                    c.drawText("$cix,$r", left + 4f, top + dbgIndexPaint.textSize + 2f, dbgIndexPaint)
+                }
+            }
+        }
+    }
+
+    // Helper: define what counts as solid in your ASCII map
+    private fun isSolidChar(ch: Char): Boolean {
+        return when (ch) {
+            '#', 'B', 'G' -> true     // sample: Block, Ground, etc. Adjust to your set
+            else -> false
+        }
+    }
+
 
     /**
      * Call once you know the SurfaceView size (e.g., from GameView.surfaceChanged).
@@ -79,21 +168,21 @@ class TileMap(private val ctx: Context) {
         parallaxLayers = bitmaps.zip(factors) { bmp, f -> ParallaxLayer(bmp, f) }
     }
 
-/**
- * Update background offsets from the camera X position.
- * If direction feels inverted, flip the sign in the formula below.
- */
-fun updateBackground(cam: com.example.game_android.game.core.Camera) {
-    val layers = parallaxLayers ?: return
-    for (layer in layers) {
-        val w = layer.bmp.width.toFloat()
-        // If moving camera right should make near layers move left on screen, keep negative sign.
+    /**
+     * Update background offsets from the camera X position.
+     * If direction feels inverted, flip the sign in the formula below.
+     */
+    fun updateBackground(cam: com.example.game_android.game.core.Camera) {
+        val layers = parallaxLayers ?: return
+        for (layer in layers) {
+            val w = layer.bmp.width.toFloat()
+            // If moving camera right should make near layers move left on screen, keep negative sign.
 //        var off = (-cam.x * layer.factor) % w
-        var off = (cam.x * layer.factor) % w  // instead of -cam.x
-        if (off < 0f) off += w
-        layer.offsetX = off
+            var off = (cam.x * layer.factor) % w  // instead of -cam.x
+            if (off < 0f) off += w
+            layer.offsetX = off
+        }
     }
-}
 
     /**
      * Draw parallax background; call before drawing tiles/entities.
@@ -161,9 +250,22 @@ fun updateBackground(cam: com.example.game_android.game.core.Camera) {
 
     private fun scanSpecials() {
         for (y in 0 until rows) for (x in 0 until cols) {
-            when (grid[y][x]) {'P' -> { playerStartX = x * tile; playerStartY = (y - 1) * tile }
+            when (grid[y][x]) {
+                'P' -> {
+                    playerStartX = x * tile; playerStartY = (y - 1) * tile
+                }
+
                 'E' -> spawnPoints.add(x * tile to (y - 1) * tile)
-                'B' -> { bossStartX = x * tile; bossStartY = (y - 2) * tile }
+                'B' -> {
+                    bossStartX = x * tile; bossStartY = (y - 2) * tile
+                }
+
+                'W' -> {
+                    witchSpawns += (x * tile) to (y * tile)
+                    // Optionally replace with floor/air as you do for other specials:
+                    grid[y][x] = '.'
+                }
+
             }
         }
     }

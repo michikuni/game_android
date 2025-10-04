@@ -202,7 +202,6 @@ class Player(
         // Keep feet on ground: bottom of sprite = bottom of physics box (y + h)
         val left = x - abs(drawW - w) / 2f
         val top = y + h - drawH
-        // IDK why I have to move the sprite to the right by w/2 to center it, but oh well
         dstRect.set(left, top, left + drawW, top + drawH)
 
         // Optional: blink while hurt

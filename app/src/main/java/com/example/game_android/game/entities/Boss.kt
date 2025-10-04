@@ -36,13 +36,16 @@ class Boss(
         }
     }
 
-    fun tryShoot(out: MutableList<Bullet>, tx: Float, ty: Float) {
+    fun tryShoot(out: MutableList<Projectile>, tx: Float, ty: Float) {
+        /*
         if (!alive) return;
         if (cd > 0) {
             cd--;return
         };
         val dir = if (tx < x) -1 else 1;
         out.add(Bullet(x + w / 2, y + h * 0.6f, 6f * dir)); cd = 30
+
+         */
     }
 
     fun hit() {
