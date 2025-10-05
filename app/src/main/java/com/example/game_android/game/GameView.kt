@@ -227,6 +227,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                     (player.y + player.h * 0.5f) - (s.y + s.h * 0.5f)
                 ) < 80f
             if (inRange) {
+                sound.playSwordSwing()
                 s.tryAttack(
                     player.x + player.w * 0.5f,
                     player.y + player.h * 0.4f
@@ -252,6 +253,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                     (player.y + player.h * 0.5f) - (g.y + g.h * 0.5f)
                 ) < 50f
             if (inRange) {
+                sound.playDaggerSwing()
                 g.tryAttack(
                     player.x + player.w * 0.5f,
                     player.y + player.h * 0.4f
@@ -537,9 +539,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             )
         })
         skeletons.forEach { skeleton ->
-            skeleton.onDeath = { sound.playWitchDie() }
-            skeleton.onHurt = { sound.play(SoundManager.Sfx.WitchHurt) }
-            skeleton.onAttack = { sound.play(SoundManager.Sfx.FireballShoot) }
+            skeleton.onDeath = { sound.playSkeletonDie() }
+            skeleton.onHurt = { sound.play(SoundManager.Sfx.SkeletonHurt) }
+            skeleton.onAttack = { sound.play(SoundManager.Sfx.SwordSwing) }
         }
     }
 
@@ -552,9 +554,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             )
         })
         goblins.forEach { goblin ->
-            goblin.onDeath = { sound.playWitchDie() }
-            goblin.onHurt = { sound.play(SoundManager.Sfx.WitchHurt) }
-            goblin.onAttack = { sound.play(SoundManager.Sfx.FireballShoot) }
+            goblin.onDeath = { sound.playGoblinDie() }
+            goblin.onHurt = { sound.play(SoundManager.Sfx.GoblinHurt) }
+            goblin.onAttack = { sound.play(SoundManager.Sfx.DaggerSwing) }
         }
     }
 

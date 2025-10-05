@@ -102,7 +102,11 @@ class SoundManager(val ctx: Context) {
                 .build()
         ).build()
 
-    enum class Sfx { ArrowHitEnemy, PlayerDie, PlayerWalk, PlayerHurt, PlayerShoot, ArrowHitWall, FireballExplode, FireballShoot, WitchHurt, WitchDie }
+    enum class Sfx {
+        ArrowHitEnemy, PlayerDie, PlayerWalk, PlayerHurt, PlayerShoot,
+        ArrowHitWall, FireballExplode, FireballShoot, WitchHurt, WitchDie,
+        DaggerSwing, GoblinDie, SkeletonDie, SwordSwing, SkeletonHurt, GoblinHurt
+    }
 
     private val sfxIds = hashMapOf<Sfx, Int>()
 
@@ -116,6 +120,12 @@ class SoundManager(val ctx: Context) {
         register(ctx, Sfx.FireballShoot, R.raw.fireball_shoot)
         register(ctx, Sfx.WitchHurt, R.raw.witch_hurt)
         register(ctx, Sfx.WitchDie, R.raw.witch_death_max)
+        register(ctx, Sfx.DaggerSwing, R.raw.dagger_swing)
+        register(ctx, Sfx.GoblinDie, R.raw.goblin_death)
+        register(ctx, Sfx.GoblinHurt, R.raw.goblin_hurt)
+        register(ctx, Sfx.SkeletonDie, R.raw.skeleton_death)
+        register(ctx, Sfx.SwordSwing, R.raw.sword_swing)
+        register(ctx, Sfx.SkeletonHurt, R.raw.skeleton_hurt)
     }
 
     private fun register(context: Context, kind: Sfx, @RawRes rawId: Int) {
@@ -148,6 +158,10 @@ class SoundManager(val ctx: Context) {
     fun playArrowHitEnemy() = play(Sfx.ArrowHitEnemy, volume = 0.1f, rate = 1f)
     fun playFireballExplode() = play(Sfx.FireballExplode, volume = 0.5f, rate = 1f)
     fun playWitchDie() = play(Sfx.WitchDie, volume = 0.7f, rate = 1f)
+    fun playDaggerSwing() = play(Sfx.DaggerSwing, volume = 1f, rate = 1f)
+    fun playSwordSwing() = play(Sfx.SwordSwing, volume = 1f, rate = 1f)
+    fun playSkeletonDie() = play(Sfx.SkeletonDie, volume = 1f, rate = 1f)
+    fun playGoblinDie() = play(Sfx.GoblinDie, volume = 1f, rate = 1f)
 
     // ------------------------------
     // Lifecycle
