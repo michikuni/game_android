@@ -22,6 +22,8 @@ class TileMap(private val ctx: Context) {
     var playerStartY = tile * (rows - 3)
     val spawnPoints = mutableListOf<Pair<Int, Int>>()
     val witchSpawns = mutableListOf<Pair<Int, Int>>()
+    val skeletonSpawns = mutableListOf<Pair<Int, Int>>()
+    val goblinSpawns = mutableListOf<Pair<Int, Int>>()
     var bossStartX = tile * (cols - 10)
     var bossStartY = tile * (rows - 3)
 
@@ -266,6 +268,17 @@ class TileMap(private val ctx: Context) {
                     grid[y][x] = '.'
                 }
 
+                'S' -> {
+                    skeletonSpawns += (x * tile) to (y * tile)
+                    // Optionally replace with floor/air as you do for other specials:
+                    grid[y][x] = '.'
+                }
+
+                'G' -> {
+                    goblinSpawns += (x * tile) to (y * tile)
+                    // Optionally replace with floor/air as you do for other specials:
+                    grid[y][x] = '.'
+                }
             }
         }
     }
