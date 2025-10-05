@@ -198,8 +198,9 @@ class HudRenderer(private val input: InputController, private val context: Conte
                 BtnKind.Left  -> R.drawable.arrow_circle_left_24px
                 BtnKind.Right -> R.drawable.arrow_circle_right_24px
                 BtnKind.Jump  -> R.drawable.jump_24px
-                BtnKind.Fire  -> R.drawable.fire_24px
+                BtnKind.Fire  -> R.drawable.bow_arrow
                 BtnKind.Pause -> R.drawable.pause_24px
+                BtnKind.Melee -> R.drawable.sword_cross
             }
             val d = dr(resId)
 
@@ -216,7 +217,7 @@ class HudRenderer(private val input: InputController, private val context: Conte
     // === Helpers ===
 
     private fun isCircle(kind: BtnKind): Boolean =
-        kind == BtnKind.Left || kind == BtnKind.Right || kind == BtnKind.Jump || kind == BtnKind.Fire
+        kind == BtnKind.Left || kind == BtnKind.Right || kind == BtnKind.Jump || kind == BtnKind.Fire || kind == BtnKind.Melee
 
     private fun asCircleRect(r: RectF): RectF {
         val size = minOf(r.width(), r.height())
@@ -230,6 +231,7 @@ class HudRenderer(private val input: InputController, private val context: Conte
         BtnKind.Right -> input.right
         BtnKind.Jump  -> input.jump
         BtnKind.Fire  -> input.fire
+        BtnKind.Melee -> input.melee
         else          -> false
     }
 

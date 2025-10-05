@@ -39,7 +39,7 @@ class SoundManager(val ctx: Context) {
     // Music (BGM)
     // ------------------------------
     private var bgm: MediaPlayer? =
-        MediaPlayer.create(ctx.applicationContext, R.raw.hidden_hit__grave).apply {
+        MediaPlayer.create(ctx.applicationContext, R.raw.hk_ss_the_mist).apply {
             isLooping = true
             val v = bgmVol.applied()
             setVolume(v, v)
@@ -83,7 +83,7 @@ class SoundManager(val ctx: Context) {
             bgm?.reset()
         } catch (_: Exception) {
         }
-        bgm = MediaPlayer.create(ctx.applicationContext, R.raw.hidden_hit__grave)?.apply {
+        bgm = MediaPlayer.create(ctx.applicationContext, R.raw.hk_ss_the_mist)?.apply {
             isLooping = true
             val v = bgmVol.applied()
             setVolume(v, v)
@@ -147,7 +147,9 @@ class SoundManager(val ctx: Context) {
     fun playArrowHitWall() = play(Sfx.ArrowHitWall, volume = 0.1f, rate = 1f)
     fun playArrowHitEnemy() = play(Sfx.ArrowHitEnemy, volume = 0.1f, rate = 1f)
     fun playFireballExplode() = play(Sfx.FireballExplode, volume = 0.5f, rate = 1f)
-    fun playWitchDie() = play(Sfx.WitchDie, volume = 0.7f, rate = 1f)
+    fun playFireballShoot() = play(Sfx.FireballShoot, volume = 0.5f, rate = 1f)
+    fun playWitchDie() = play(Sfx.WitchDie, volume = 0.15f, rate = 1f)
+    fun playWitchHurt() = play(Sfx.WitchHurt, volume = 0.3f, rate = 1f)
 
     // ------------------------------
     // Lifecycle

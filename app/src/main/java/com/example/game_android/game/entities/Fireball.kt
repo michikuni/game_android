@@ -55,7 +55,7 @@ class Fireball(
 
     // Physics size baseline = width in tiles for MOVE; EXPLODE will resize per frame
     private val tile = com.example.game_android.game.core.Constants.TILE.toFloat()
-    private val widthInTilesMove = 3f
+    private val widthInTilesMove = 4.5f
     override var w = widthInTilesMove * tile
     override var h: Float
 

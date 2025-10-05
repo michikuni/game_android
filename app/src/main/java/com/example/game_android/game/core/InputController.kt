@@ -16,57 +16,66 @@ class InputController(private val view: View, context: Context) {
     private val btnRight = RectF()
     private val btnJump = RectF()
     private val btnFire = RectF()
+    private val btnMelee = RectF()
     private val btnPause = RectF()
-    private val btnMute = RectF()
 
     // --- Active states exposed to GameView ---
     var left = false;     private set
     var right = false;    private set
     var jump = false;     private set
     var fire = false;     private set
+    var melee = false; private set
 
     // Track which pointer currently owns each button (null if none)
     private var leftPid: Int? = null
     private var rightPid: Int? = null
     private var jumpPid: Int? = null
     private var firePid: Int? = null
-
-    var onMuteToggle: (() -> Unit)? = null
+    private var meleePid: Int? = null
 
     // Allow small drifts while “holding”
     private val touchSlopPx = view.resources.displayMetrics.density * 16f
 
     fun layout(w: Int, h: Int) {
-        val pad = 16f
-        val bw = w * 0.12f
+        val pad = 30f
+        val bw = w * 0.15f
         val bh = h * 0.3f
 
-        // Nút tròn (giữ nguyên kích thước)
+        // Left cluster (smaller)
         btnLeft.set(pad, h - bh - pad, pad + bw, h - pad)
         btnRight.set(btnLeft.right + pad, btnLeft.top, btnLeft.right + pad + bw, btnLeft.bottom)
+
+        // Right cluster — smaller buttons; Fire above Jump; Melee left of Jump
+        val smallW = bw * 0.70f // was 0.80f
+        val smallH = bh * 0.70f // was 0.80f
+
+        // Jump (bottom-right)
         btnJump.set(
-            w - bw*0.8f - pad,   // 0.8f = giảm 20%
-            h - bh*0.8f - pad,
+            w - smallW - pad,
+            h - smallH - pad,
             w - pad,
             h - pad
         )
 
-        btnFire.set(
-            btnJump.left - pad - bw*0.8f,
+        // Melee (left of Jump, same baseline)
+        btnMelee.set(
+            btnJump.left - pad - smallW,
             btnJump.top,
             btnJump.left - pad,
             btnJump.bottom
         )
-        // Nút vuông nhỏ cho Pause/Mute
-        val small = minOf(bw, bh) * 0.4f
-        btnPause.set(
-            w - pad - small, pad,
-            w - pad, pad + small
+
+        // Fire/Range (stacked above Jump)
+        btnFire.set(
+            btnJump.left,
+            btnJump.top - pad - smallH,
+            btnJump.right,
+            btnJump.top - pad
         )
-        btnMute.set(
-            btnPause.left - pad - small, btnPause.top,
-            btnPause.left - pad, btnPause.top + small
-        )
+
+        // Pause unchanged
+        val small = minOf(bw, bh) * 0.40f
+        btnPause.set(w - pad - small, pad, w - pad, pad + small)
     }
 
 
@@ -80,6 +89,7 @@ class InputController(private val view: View, context: Context) {
             rightPid == null && btnRight.containsWithSlop(x, y, touchSlopPx) -> rightPid = pid
             jumpPid == null && btnJump.containsWithSlop(x, y, touchSlopPx)   -> jumpPid = pid
             firePid == null && btnFire.containsWithSlop(x, y, touchSlopPx)   -> firePid = pid
+            meleePid == null && btnMelee.containsWithSlop(x, y, touchSlopPx) -> meleePid = pid
         }
         recomputeStates()
     }
@@ -89,21 +99,16 @@ class InputController(private val view: View, context: Context) {
         if (rightPid == pid) rightPid = null
         if (jumpPid == pid) jumpPid = null
         if (firePid == pid) firePid = null
+        if (meleePid == pid) meleePid = null
         recomputeStates()
     }
 
     private fun recomputeStates() {
-        // default off
-        var l = false; var r = false; var j = false; var f = false
-
-        // Any active owner keeps the button pressed while the pointer remains down
-        // We’ll verify owner pointers are still present on MOVE (below)
-        l = leftPid  != null
-        r = rightPid != null
-        j = jumpPid  != null
-        f = firePid  != null
-
-        left = l; right = r; jump = j; fire = f
+        left  = leftPid  != null
+        right = rightPid != null
+        jump  = jumpPid  != null
+        fire  = firePid  != null
+        melee = meleePid != null  // NEW
     }
 
     // Verify owners still make sense (pointer still down and within slop).
@@ -119,6 +124,7 @@ class InputController(private val view: View, context: Context) {
         rightPid = stillDown(rightPid, btnRight)
         jumpPid  = stillDown(jumpPid,  btnJump)
         firePid  = stillDown(firePid,  btnFire)
+        meleePid = stillDown(meleePid, btnMelee)
         recomputeStates()
     }
 
@@ -131,11 +137,6 @@ class InputController(private val view: View, context: Context) {
                 // Pause has priority and toggles immediately
                 if (btnPause.containsWithSlop(x, y, touchSlopPx)) {
                     s.paused = !s.paused
-                    view.performClick()
-                    return
-                }
-                if (btnMute.containsWithSlop(x, y, touchSlopPx)) {
-                    onMuteToggle?.invoke()
                     view.performClick()
                     return
                 }
@@ -154,7 +155,7 @@ class InputController(private val view: View, context: Context) {
                     val x = e.getX(i); val y = e.getY(i)
 
                     // If this pid already owns something, skip
-                    if (pid == leftPid || pid == rightPid || pid == jumpPid || pid == firePid) continue
+                    if (pid == leftPid || pid == rightPid || pid == jumpPid || pid == firePid || pid == meleePid) continue
 
                     // Try to latch any free button it’s over
                     acquireIfHit(pid, x, y)
@@ -168,7 +169,7 @@ class InputController(private val view: View, context: Context) {
         }
     }
 
-    enum class BtnKind { Left, Right, Jump, Fire, Pause }
+    enum class BtnKind { Left, Right, Jump, Fire, Pause, Melee }
     data class ButtonSpec(val rect: RectF, val kind: BtnKind)
 
     fun buttons(): List<ButtonSpec> = listOf(
@@ -176,6 +177,7 @@ class InputController(private val view: View, context: Context) {
         ButtonSpec(btnRight, BtnKind.Right),
         ButtonSpec(btnJump,  BtnKind.Jump),
         ButtonSpec(btnFire,  BtnKind.Fire),
+        ButtonSpec(btnMelee, BtnKind.Melee),
         ButtonSpec(btnPause, BtnKind.Pause),
     )
 

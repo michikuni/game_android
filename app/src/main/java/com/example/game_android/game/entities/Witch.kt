@@ -13,6 +13,7 @@ import androidx.core.graphics.withSave
 import com.example.game_android.R
 import com.example.game_android.game.util.BitmapUtils
 import com.example.game_android.game.util.DebugDrawUtils
+import com.example.game_android.game.util.Strip
 
 class Witch(
     px: Float, py: Float, private val ctx: Context
@@ -37,7 +38,7 @@ class Witch(
     var alive = true
 
     private val tile = com.example.game_android.game.core.Constants.TILE.toFloat()
-    private val heightInTiles = 5.5f
+    private val heightInTiles = 6.5f
 
     // AI movement tuning
     private val preferredStandOff = 260f
@@ -66,42 +67,12 @@ class Witch(
     // ─────────────────────────────────────────────────────────────────────────────
     private enum class Anim { IDLE, WALK, CAST, HURT, DEATH }
 
-    private data class Strip(
-        val bmp: Bitmap,
-        val frames: Int,
-        val fw: Int,
-        val fh: Int,
-        val speed: Int,
-        val loop: Boolean,
-        val trims: List<Rect>,
-        val baseHpx: Int              // tallest trimmed frame in this strip (for pixel-scale mode)
-    )
-
-    private fun loadStrip(resId: Int, speed: Int, loop: Boolean = true): Strip {
-        val bmp = BitmapUtils.decodePixelArt(ctx, resId)
-        val fh = bmp.height
-        val frames = (bmp.width / fh).coerceAtLeast(1)
-        val fw = bmp.width / frames
-
-        val trims = ArrayList<Rect>(frames)
-        var maxH = 1
-        for (i in 0 until frames) {
-            val sx = i * fw
-            val frameBmp = Bitmap.createBitmap(bmp, sx, 0, fw, fh)
-            val local = BitmapUtils.computeOpaqueBounds(frameBmp) ?: Rect(0, 0, fw, fh)
-            trims += Rect(sx + local.left, local.top, sx + local.right, local.bottom)
-            maxH = maxOf(maxH, local.height().coerceAtLeast(1))
-            frameBmp.recycle()
-        }
-        return Strip(bmp, frames, fw, fh, speed, loop, trims, baseHpx = maxH)
-    }
-
     private val strips: Map<Anim, Strip> = mapOf(
-        Anim.IDLE to loadStrip(R.drawable.witch_idle, 13, loop = true),
-        Anim.WALK to loadStrip(R.drawable.witch_walk, 11, loop = true),
-        Anim.CAST to loadStrip(R.drawable.witch_attack, 7, loop = false),
-        Anim.HURT to loadStrip(R.drawable.witch_hurt, 20, loop = false),
-        Anim.DEATH to loadStrip(R.drawable.witch_death, 9, loop = false),
+        Anim.IDLE to Strip.loadStrip(ctx, R.drawable.witch_idle, 13, loop = true),
+        Anim.WALK to Strip.loadStrip(ctx, R.drawable.witch_walk, 11, loop = true),
+        Anim.CAST to Strip.loadStrip(ctx, R.drawable.witch_attack, 7, loop = false),
+        Anim.HURT to Strip.loadStrip(ctx, R.drawable.witch_hurt, 20, loop = false),
+        Anim.DEATH to Strip.loadStrip(ctx, R.drawable.witch_death, 9, loop = false),
     )
 
     // ─────────────────────────────────────────────────────────────────────────────

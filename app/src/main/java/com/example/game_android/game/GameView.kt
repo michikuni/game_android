@@ -1,6 +1,7 @@
 package com.example.game_android.game
 
 import android.content.Context
+import android.graphics.RectF
 import android.util.Log
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -64,6 +65,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         isFocusableInTouchMode = true
         keepScreenOn = true
         initWitches()
+        initPlayer()
         //player.debugShowHitbox = true
         //witches.forEach { witch -> witch.showHitbox = true }
     }
@@ -121,8 +123,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
             else -> player.vx *= 0.8f
         }
-        if (input.jumpPressed(player) && !player.isAttacking) {
-            player.vy = -Constants.JUMP_VELOCITY; player.canJump = false
+        if (input.jumpPressed(player) && player.canJump && !player.isAttacking) {
+            player.vy = -Constants.JUMP_VELOCITY
+            player.canJump = false
+            player.onJumpImpulse()   // <-- this starts START_JUMP → JUMP sequence
         }
 
         // Consider walking only when on ground, moving, and not attacking
@@ -158,10 +162,18 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         player.vy += Constants.GRAVITY
         map.moveAndCollide(player)
 
-        // Shooting
+        // Shooting (ranged)
         if (input.fire && !player.isAttacking && player.ammo > 0) {
             player.tryShoot(arrows)
-            sound.play(SoundManager.Sfx.PlayerShoot)
+        }
+
+        // Melee
+        // Feed current held state every tick (before player.draw happens)
+        player.setMeleeHeld(input.melee)
+
+        // Start combo (Phase 1) if pressed and not already attacking
+        if (input.melee && !player.isAttacking) {
+            player.tryMelee()
         }
 
         // Enemies
@@ -399,7 +411,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     }
 
     private fun resetGame() {
-        player.reset(map.playerStartX.toFloat(), map.playerStartY.toFloat())
+        initPlayer()
         initWitches()
         enemies.clear(); enemies.addAll(map.spawnPoints.map {
             Enemy(
@@ -450,8 +462,40 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         })
         witches.forEach { witch ->
             witch.onDeath = { sound.playWitchDie() }
-            witch.onHurt = { sound.play(SoundManager.Sfx.WitchHurt) }
-            witch.onThrowFireball = { sound.play(SoundManager.Sfx.FireballShoot) }
+            witch.onHurt = { sound.playWitchHurt() }
+            witch.onThrowFireball = { sound.playFireballShoot() }
+        }
+    }
+
+    private fun initPlayer() {
+        player.reset(map.playerStartX.toFloat(), map.playerStartY.toFloat())
+        player.onShootArrow = { sound.play(SoundManager.Sfx.PlayerShoot) }
+        player.onHurt = { sound.play(SoundManager.Sfx.PlayerHurt) }
+
+        // NEW: when slash becomes active, apply damage to anything in the hitbox
+        player.onMeleeStrike = { hitbox ->
+            var hitSomething = false
+            enemies.forEach { e ->
+                if (e.alive && RectF.intersects(hitbox, e.bounds())) {
+                    e.hit(); hitSomething = true
+                }
+            }
+            witches.forEach { w ->
+                if (w.alive && RectF.intersects(hitbox, w.bounds())) {
+                    w.hit(); hitSomething = true
+                }
+            }
+            if (boss.alive && RectF.intersects(hitbox, boss.bounds())) {
+                boss.hit(); hitSomething = true
+                if (!boss.alive) state.victory = true
+            }
+            if (hitSomething) {
+                // reuse your hit SFX; swap to a dedicated melee sound if you add one
+                sound.play(SoundManager.Sfx.ArrowHitEnemy)
+            } else {
+                // optional: a whoosh swing
+                // sound.play(SoundManager.Sfx.PlayerMeleeSwing)
+            }
         }
     }
 
