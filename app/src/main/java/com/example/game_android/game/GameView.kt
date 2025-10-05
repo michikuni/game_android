@@ -18,6 +18,8 @@ import com.example.game_android.game.entities.Fireball
 import com.example.game_android.game.entities.Player
 import com.example.game_android.game.entities.Projectile
 import com.example.game_android.game.entities.Witch
+import com.example.game_android.game.entities.Skeleton
+import com.example.game_android.game.entities.Goblin
 import com.example.game_android.game.ui.HudRenderer
 import com.example.game_android.game.world.GameState
 import com.example.game_android.game.world.TileMap
@@ -40,6 +42,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private val map = TileMap(context)
     private val player = Player(map.playerStartX.toFloat(), map.playerStartY.toFloat(), context)
     private val witches = mutableListOf<Witch>()
+    private val skeletons = mutableListOf<Skeleton>()
+    private val goblins = mutableListOf<Goblin>()
     private val enemies = mutableListOf<Enemy>().apply {
         addAll(map.spawnPoints.map {
             Enemy(
@@ -65,6 +69,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         isFocusableInTouchMode = true
         keepScreenOn = true
         initWitches()
+        initSkeletons()
+        initGoblins()
         initPlayer()
         //player.debugShowHitbox = true
         //witches.forEach { witch -> witch.showHitbox = true }
@@ -215,7 +221,58 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 )
             }
         }
+        // Skeleton
+        skeletons.forEach { s ->
+            if (!s.alive) return@forEach
+            s.vy += Constants.GRAVITY
+            // Update AI (no jump yet) — onGround = w.canJump after collision
+            // But we need to collide first to know canJump → do a tentative AI step, then collide, then finalize anim
+            // Simple approach: do AI using last frame canJump, then collide, then refresh anim state.
+            val onGroundPrev = s.canJump
+            s.updateAiAndAnim(player.x, player.y, onGroundPrev)
+            map.moveAndCollide(s)
+            s.updateAiAndAnim(player.x, player.y, s.canJump) // refresh anim if ground state changed
 
+            // LoS is optional; if you have a helper, gate by LoS. Here we just use range.
+            val inRange =
+                abs((player.x + player.w * 0.5f) - (s.x + s.w * 0.5f)) < 120f && abs(
+                    (player.y + player.h * 0.5f) - (s.y + s.h * 0.5f)
+                ) < 80f
+            if (inRange) {
+                sound.playSwordSwing()
+                s.tryAttack(
+                    player.x + player.w * 0.5f,
+                    player.y + player.h * 0.4f
+                )
+            }
+            s.checkMeleeHit(player, sound, state)
+        }
+        // Goblin
+        goblins.forEach { g ->
+            if (!g.alive) return@forEach
+            g.vy += Constants.GRAVITY
+            // Update AI (no jump yet) — onGround = w.canJump after collision
+            // But we need to collide first to know canJump → do a tentative AI step, then collide, then finalize anim
+            // Simple approach: do AI using last frame canJump, then collide, then refresh anim state.
+            val onGroundPrev = g.canJump
+            g.updateAiAndAnim(player.x, player.y, onGroundPrev)
+            map.moveAndCollide(g)
+            g.updateAiAndAnim(player.x, player.y, g.canJump) // refresh anim if ground state changed
+
+            // LoS is optional; if you have a helper, gate by LoS. Here we just use range.
+            val inRange =
+                abs((player.x + player.w * 0.5f) - (g.x + g.w * 0.5f)) < 80f && abs(
+                    (player.y + player.h * 0.5f) - (g.y + g.h * 0.5f)
+                ) < 50f
+            if (inRange) {
+                sound.playDaggerSwing()
+                g.tryAttack(
+                    player.x + player.w * 0.5f,
+                    player.y + player.h * 0.4f
+                )
+            }
+            g.checkMeleeHit(player, sound, state)
+        }
         // Boss
         if (boss.alive) {
             boss.vy += Constants.GRAVITY
@@ -237,6 +294,18 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 if (w.alive && a.overlaps(w)) {
                     sound.playArrowHitEnemy()
                     w.hit(); a.dead = true;
+                }
+            }
+            skeletons.forEach { s ->
+                if (s.alive && a.overlaps(s)) {
+                    sound.playArrowHitEnemy()
+                    s.hit(); a.dead = true;
+                }
+            }
+            goblins.forEach { g ->
+                if (g.alive && a.overlaps(g)) {
+                    sound.playArrowHitEnemy()
+                    g.hit(); a.dead = true;
                 }
             }
             if (boss.alive && a.overlaps(boss)) {
@@ -373,6 +442,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
         run {
             witches.removeAll { it.isDeadAndGone() }
+            skeletons.removeAll { it.isDeadAndGone() }
+            goblins.removeAll { it.isDeadAndGone() }
         }
     }
 
@@ -393,6 +464,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 map.drawDebugTiles(this, camera.x, camera.y, width, height)
                 enemies.forEach { it.draw(this) }
                 witches.forEach { it.draw(this) }
+                skeletons.forEach { it.draw(this) }
+                goblins.forEach { it.draw(this) }
                 boss.draw(this)
                 bullets.forEach { it.draw(this) }
                 enemyBullets.forEach { it.draw(this) }
@@ -413,6 +486,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private fun resetGame() {
         initPlayer()
         initWitches()
+        initSkeletons()
+        initGoblins()
         enemies.clear(); enemies.addAll(map.spawnPoints.map {
             Enemy(
                 it.first.toFloat(), it.second.toFloat(), context
@@ -496,6 +571,36 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 // optional: a whoosh swing
                 // sound.play(SoundManager.Sfx.PlayerMeleeSwing)
             }
+        }
+    }
+
+    private fun initSkeletons() {
+        skeletons.clear(); skeletons.addAll(map.skeletonSpawns.map { (sx, sy) ->
+            Skeleton(
+                sx.toFloat(),
+                sy.toFloat(),
+                context
+            )
+        })
+        skeletons.forEach { skeleton ->
+            skeleton.onDeath = { sound.playSkeletonDie() }
+            skeleton.onHurt = { sound.play(SoundManager.Sfx.SkeletonHurt) }
+            skeleton.onAttack = { sound.play(SoundManager.Sfx.SwordSwing) }
+        }
+    }
+
+    private fun initGoblins() {
+        goblins.clear(); goblins.addAll(map.goblinSpawns.map { (sx, sy) ->
+            Goblin(
+                sx.toFloat(),
+                sy.toFloat(),
+                context
+            )
+        })
+        goblins.forEach { goblin ->
+            goblin.onDeath = { sound.playGoblinDie() }
+            goblin.onHurt = { sound.play(SoundManager.Sfx.GoblinHurt) }
+            goblin.onAttack = { sound.play(SoundManager.Sfx.DaggerSwing) }
         }
     }
 
