@@ -44,7 +44,7 @@ class Goblin(
 
     // AI movement tuning
     private val preferredStandOff = 120f
-    private val maxSpeed = 300f
+    private val maxSpeed = 40f
     private val accel = 0.07f
     private val friction = 0.3f
 
@@ -55,7 +55,7 @@ class Goblin(
     private var attackDelayCounter = 0
 
     // Detection / debug ranges
-    private val triggerRange = 600f
+    private val triggerRange = 1500f
     private val attackRangeX = 80f
     private val attackRangeY = 50f
 
@@ -122,8 +122,8 @@ class Goblin(
     private var facing = 1
 
     // Debug toggles
-    var showHitbox = false
-    var debugShowRanges = false
+    var showHitbox = true
+    var debugShowRanges = true
 
     // Range paints
     private val rangePaintTrigger = Paint().apply {
@@ -157,6 +157,52 @@ class Goblin(
     private var deadAndGone = false
     private var invulTicks = 0
     private val hurtIframes = 10
+
+    // How tight the vertical band is (fraction of Goblin height)
+    private val visionBandRatio = 0.35f
+
+    private fun senseCenterY(): Float = y + h * 0.55f
+    private fun verticalBandPixels(bandPx: Float): Pair<Float, Float> {
+        val cy = senseCenterY()
+        return (cy - bandPx) to (cy + bandPx)
+    }
+
+    private fun forwardRect(reach: Float, bandPx: Float): RectF {
+        val (top, bottom) = verticalBandPixels(bandPx)
+        val left: Float
+        val right: Float
+        if (facing >= 0) { left = x + w; right = x + w + reach }
+        else { left = x - reach; right = x }
+        return RectF(left, top, right, bottom)
+    }
+
+    // Zones that map 1:1 to the AI checks
+    private fun visionRect(): RectF =
+        forwardRect(triggerRange, h * visionBandRatio)
+
+    private fun attackEligibilityRect(): RectF =
+        forwardRect(attackRangeX, minOf(attackRangeY, h * visionBandRatio))
+
+    // Public helpers (GameView can use these)
+    fun canSensePlayer(target: RectF): Boolean = RectF.intersects(visionRect(), target)
+    fun canStartAttackOn(target: RectF): Boolean = RectF.intersects(attackEligibilityRect(), target)
+
+
+    // Melee hitbox used at the damage keyframe
+    private fun meleeHitbox(): RectF {
+        val torsoTop  = y + h * 0.20f
+        val torsoBot  = y + h * 0.75f
+        val bandPx    = minOf(attackRangeY, torsoBot - torsoTop)
+        val top       = (torsoTop + torsoBot - bandPx) * 0.5f
+        val bottom    = top + bandPx
+
+        val left: Float
+        val right: Float
+        if (facing >= 0) { left = x + w; right = x + w + attackRangeX }
+        else { left = x - attackRangeX; right = x }
+
+        return RectF(left, top, right, bottom)
+    }
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Init
@@ -220,23 +266,18 @@ class Goblin(
         if (!alive || !isAttacking() || hasHitPlayer) return
 
         val attackStrip = strips[Anim.ATTACK]!!
-        val damageFrame = attackStrip.frames - 1
+        val damageFrame = attackStrip.frames - 1       // tweak if your sprite hits earlier
         if (frame < damageFrame) return
 
-        val attackRect = RectF(
-            x - attackRangeX,
-            y - attackRangeY / 2f,
-            x + w + attackRangeX,
-            y + h + attackRangeY / 2f
-        )
-
-        if (RectF.intersects(attackRect, player.bounds())) {
+        val hitbox = meleeHitbox()
+        if (RectF.intersects(hitbox, player.bounds())) {
             hasHitPlayer = true
             player.hit()
             sound.play(SoundManager.Sfx.PlayerHurt)
             if (player.hp <= 0) state.gameOver = true
         }
     }
+
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Update AI + animation
@@ -253,10 +294,14 @@ class Goblin(
             if (s != 0) facing = s
         }
 
-        val distToPlayer = kotlin.math.abs(dxToPlayer)
-        if (distToPlayer < attackRangeX + w) {
+        val sameHeight = kotlin.math.abs(playerY - senseCenterY()) <= (h * visionBandRatio)
+        val inFront    = (dxToPlayer * facing) >= (-w * 0.10f)
+        val closeEnough = kotlin.math.abs(dxToPlayer) <= attackRangeX
+
+        if (closeEnough && sameHeight && inFront) {
             tryAttack(playerX, playerY)
         }
+
 
         when {
             dying -> vx = 0f
@@ -366,11 +411,18 @@ class Goblin(
 
         if (showHitbox) drawDebugHitbox(c)
         if (debugShowRanges) drawDebugRanges(c)
+        if (debugShowRanges && isAttacking()) c.drawRect(meleeHitbox(), meleePaint)
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Debug helpers
     // ─────────────────────────────────────────────────────────────────────────────
+    private val meleePaint = Paint().apply {
+        style = Paint.Style.STROKE
+        color = Color.argb(200, 255, 60, 60)
+        strokeWidth = 2f
+    }
+
     private fun drawDebugHitbox(c: Canvas) {
         if (!showHitbox) return
         val pb = physicsBounds()
@@ -382,13 +434,16 @@ class Goblin(
 
     private fun drawDebugRanges(c: Canvas) {
         if (!debugShowRanges) return
-        val cx = x + w * 0.5f
-        val cy = y + h * 0.55f
-        c.drawCircle(cx, cy, triggerRange, rangePaintTrigger)
-        c.drawText("trigger: ${triggerRange.toInt()}", cx + 8f, cy - triggerRange - 8f, rangeTextPaint)
-        val oval = RectF(cx - attackRangeX, cy - attackRangeY, cx + attackRangeX, cy + attackRangeY)
-        c.drawOval(oval, rangePaintFire)
-        c.drawText("attack: ${attackRangeX.toInt()}x${attackRangeY.toInt()}", oval.left, oval.top - 6f, rangeTextPaint)
+
+        // Blue = vision zone (aggro)
+        val vr = visionRect()
+        c.drawRect(vr, rangePaintTrigger)
+        c.drawText("see", vr.left, vr.top - 6f, rangeTextPaint)
+
+        // Orange = attack eligibility zone
+        val ar = attackEligibilityRect()
+        c.drawRect(ar, rangePaintFire)
+        c.drawText("attack", ar.left, ar.top - 6f, rangeTextPaint)
     }
 
     private fun physicsBounds(): RectF = RectF(x, y, x + w, y + h)

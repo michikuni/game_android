@@ -2,7 +2,6 @@
 package com.example.game_android.game.entities
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
@@ -11,7 +10,6 @@ import android.graphics.Rect
 import android.graphics.RectF
 import androidx.core.graphics.withSave
 import com.example.game_android.R
-import com.example.game_android.game.util.BitmapUtils
 import com.example.game_android.game.util.DebugDrawUtils
 import com.example.game_android.game.util.Strip
 
@@ -51,9 +49,12 @@ class Witch(
     private val CAST_FIRE_FRAME = 8                       // keyframe (0-based) to spawn projectile
 
     // Detection / debug ranges
-    private val triggerRange = 680f
-    private val fireRangeX = 520f
-    private val fireRangeY = 280f
+    private val sightRadius = 900f          // "see" radius (big circle)
+    private val attackRadius = 600f         // "shoot" radius (smaller circle)
+
+    // Small hysteresis so she doesn't jitter on the exact boundary
+    private val attackInnerBand = attackRadius * 0.85f  // if closer than this → back up
+    private val attackOuterBand = attackRadius + 8f     // if farther than this → step in a bit
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Event listeners
@@ -88,8 +89,8 @@ class Witch(
     private var facing = 1
 
     // Debug toggles
-    var showHitbox = false
-    var debugShowRanges = false
+    var showHitbox = true
+    var debugShowRanges = true
 
     // Range paints
     private val rangePaintTrigger = Paint().apply {
@@ -139,6 +140,21 @@ class Witch(
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
+// Range helpers (ADD)
+// ─────────────────────────────────────────────────────────────────────────────
+    private fun centerX(): Float = x + w * 0.5f
+    private fun centerY(): Float = y + h * 0.55f
+
+    private fun distTo(px: Float, py: Float): Float {
+        val dx = px - centerX()
+        val dy = py - centerY()
+        return kotlin.math.sqrt(dx * dx + dy * dy)
+    }
+
+    fun inSight(px: Float, py: Float): Boolean = distTo(px, py) <= sightRadius
+    fun inAttackRange(px: Float, py: Float): Boolean = distTo(px, py) <= attackRadius
+
+    // ─────────────────────────────────────────────────────────────────────────────
     // Public API
     // ─────────────────────────────────────────────────────────────────────────────
     fun isDeadAndGone(): Boolean = deadAndGone
@@ -150,6 +166,7 @@ class Witch(
     fun tryShootFireball(outProjectiles: MutableList<Projectile>, px: Float, py: Float) {
         if (!alive) return
         if (fireCd > 0 || castingTicks > 0) return
+        if (!inAttackRange(px, py)) return  // NEW: only shoot when inside circular attack range
 
         val s = strips[Anim.CAST]!!
         anim = Anim.CAST
@@ -162,6 +179,7 @@ class Witch(
         pendingTargetX = px
         pendingTargetY = py
     }
+
 
     fun hit() {
         if (deadAndGone || dying) return
@@ -213,18 +231,39 @@ class Witch(
             anim == Anim.HURT -> {
                 vx *= 0.85f
             }
-            // Normal
+
             else -> {
                 val casting = (castingTicks > 0)
-                val wantChase = kotlin.math.abs(dxToPlayer) < triggerRange
 
                 if (casting) {
+                    // Casting: drift a bit but mostly hold position
                     vx *= 0.70f
-                } else if (wantChase) {
-                    val dist = kotlin.math.abs(dxToPlayer)
+                } else {
+                    // Decide based on circular ranges
+                    val px =
+                        playerX + 0.5f * 1f // player's center X (the caller already passes playerX)
+                    val py =
+                        playerY + 0.5f * 1f // rough center Y; playerY is top-left, this is fine
+
+                    val cdx = playerX - centerX()
+                    val absDx = kotlin.math.abs(cdx)
+                    val d = distTo(playerX, playerY)
+
                     val desiredVx = when {
-                        dist > (preferredStandOff + 24f) -> maxSpeed * kotlin.math.sign(dxToPlayer)
-                        dist < (preferredStandOff - 24f) -> -maxSpeed * kotlin.math.sign(dxToPlayer)
+                        // Player not in sight → idle / friction
+                        d > sightRadius -> 0f
+
+                        // In sight but OUTSIDE attack → move TOWARD player along X until we enter attack band
+                        d > attackOuterBand -> {
+                            maxSpeed * kotlin.math.sign(cdx)
+                        }
+
+                        // Deep inside attack → back up (move AWAY) until we are just inside attack range
+                        d < attackInnerBand -> {
+                            -maxSpeed * kotlin.math.sign(cdx)
+                        }
+
+                        // Within the comfortable shoot band → stop (or minor drift)
                         else -> 0f
                     }
 
@@ -237,8 +276,6 @@ class Witch(
                             vx = maxSpeed * kotlin.math.sign(vx)
                         }
                     }
-                } else {
-                    vx *= friction
                 }
             }
         }
@@ -371,24 +408,18 @@ class Witch(
     private fun drawDebugRanges(c: Canvas) {
         if (!debugShowRanges) return
 
-        val cx = x + w * 0.5f
-        val cy = y + h * 0.55f
+        val cx = centerX()
+        val cy = centerY()
 
-        // Trigger circle
-        c.drawCircle(cx, cy, triggerRange, rangePaintTrigger)
-        c.drawText(
-            "trigger: ${triggerRange.toInt()}", cx + 8f, cy - triggerRange - 8f, rangeTextPaint
-        )
+        // Sight (big, blue)
+        c.drawCircle(cx, cy, sightRadius, rangePaintTrigger)
+        c.drawText("sight: ${sightRadius.toInt()}",
+            cx + 8f, cy - sightRadius - 8f, rangeTextPaint)
 
-        // Fire oval
-        val oval = RectF(cx - fireRangeX, cy - fireRangeY, cx + fireRangeX, cy + fireRangeY)
-        c.drawOval(oval, rangePaintFire)
-        c.drawText(
-            "fire: ${fireRangeX.toInt()}x${fireRangeY.toInt()}",
-            oval.left,
-            oval.top - 6f,
-            rangeTextPaint
-        )
+        // Attack (smaller, orange)
+        c.drawCircle(cx, cy, attackRadius, rangePaintFire)
+        c.drawText("attack: ${attackRadius.toInt()}",
+            cx + 8f, cy - attackRadius - 8f, rangeTextPaint)
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

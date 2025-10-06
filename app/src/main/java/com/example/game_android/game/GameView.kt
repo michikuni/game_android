@@ -15,11 +15,11 @@ import com.example.game_android.game.entities.Boss
 import com.example.game_android.game.entities.Bullet
 import com.example.game_android.game.entities.Enemy
 import com.example.game_android.game.entities.Fireball
+import com.example.game_android.game.entities.Goblin
 import com.example.game_android.game.entities.Player
 import com.example.game_android.game.entities.Projectile
-import com.example.game_android.game.entities.Witch
 import com.example.game_android.game.entities.Skeleton
-import com.example.game_android.game.entities.Goblin
+import com.example.game_android.game.entities.Witch
 import com.example.game_android.game.ui.HudRenderer
 import com.example.game_android.game.world.GameState
 import com.example.game_android.game.world.TileMap
@@ -208,18 +208,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             map.moveAndCollide(w)
             w.updateAiAndAnim(player.x, player.y, w.canJump) // refresh anim if ground state changed
 
-            // LoS is optional; if you have a helper, gate by LoS. Here we just use range.
-            val inRange =
-                abs((player.x + player.w * 0.5f) - (w.x + w.w * 0.5f)) < 520f && abs(
-                    (player.y + player.h * 0.5f) - (w.y + w.h * 0.5f)
-                ) < 280f
-            if (inRange) {
-                w.tryShootFireball(
-                    enemyBullets /* <- shared bucket */,
-                    player.x + player.w * 0.5f,
-                    player.y + player.h * 0.4f
-                )
-            }
+            w.tryShootFireball(
+                enemyBullets,
+                player.x + player.w * 0.5f,
+                player.y + player.h * 0.4f
+            )
         }
         // Skeleton
         skeletons.forEach { s ->
@@ -233,18 +226,16 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             map.moveAndCollide(s)
             s.updateAiAndAnim(player.x, player.y, s.canJump) // refresh anim if ground state changed
 
-            // LoS is optional; if you have a helper, gate by LoS. Here we just use range.
-            val inRange =
-                abs((player.x + player.w * 0.5f) - (s.x + s.w * 0.5f)) < 120f && abs(
-                    (player.y + player.h * 0.5f) - (s.y + s.h * 0.5f)
-                ) < 80f
-            if (inRange) {
-                sound.playSwordSwing()
+            val pBounds = player.bounds()
+
+// Use the same rectangle the debug shows (orange) so visuals == behavior
+            if (s.canStartAttackOn(pBounds)) {
                 s.tryAttack(
                     player.x + player.w * 0.5f,
                     player.y + player.h * 0.4f
                 )
             }
+
             s.checkMeleeHit(player, sound, state)
         }
         // Goblin
@@ -259,17 +250,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             map.moveAndCollide(g)
             g.updateAiAndAnim(player.x, player.y, g.canJump) // refresh anim if ground state changed
 
-            // LoS is optional; if you have a helper, gate by LoS. Here we just use range.
-            val inRange =
-                abs((player.x + player.w * 0.5f) - (g.x + g.w * 0.5f)) < 80f && abs(
-                    (player.y + player.h * 0.5f) - (g.y + g.h * 0.5f)
-                ) < 50f
-            if (inRange) {
-                sound.playDaggerSwing()
-                g.tryAttack(
-                    player.x + player.w * 0.5f,
-                    player.y + player.h * 0.4f
-                )
+            val pBounds = player.bounds()
+            if (g.canStartAttackOn(pBounds)) {
+                g.tryAttack(player.x + player.w * 0.5f, player.y + player.h * 0.4f)
             }
             g.checkMeleeHit(player, sound, state)
         }
@@ -558,6 +541,16 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             witches.forEach { w ->
                 if (w.alive && RectF.intersects(hitbox, w.bounds())) {
                     w.hit(); hitSomething = true
+                }
+            }
+            skeletons.forEach { s ->
+                if (s.alive && RectF.intersects(hitbox, s.bounds())) {
+                    s.hit(); hitSomething = true
+                }
+            }
+            goblins.forEach { g ->
+                if (g.alive && RectF.intersects(hitbox, g.bounds())) {
+                    g.hit(); hitSomething = true
                 }
             }
             if (boss.alive && RectF.intersects(hitbox, boss.bounds())) {

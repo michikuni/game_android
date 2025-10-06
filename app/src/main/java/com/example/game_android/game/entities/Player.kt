@@ -88,7 +88,7 @@ class Player(
     val ammo get() = quiver.ammo()
 
     // Debug
-    var debugShowHitbox = false
+    var debugShowHitbox = true
 
     // ── DEBUG: melee hitbox overlay ────────────────────────────────────────────────
     private data class FadingRect(val rect: RectF, var ttl: Int)
@@ -432,18 +432,7 @@ class Player(
                     lastLocalFrameSeen = local
                     val dmgSet = meleePhases[meleePhaseIdx].damageFramesLocal
                     if (local in dmgSet && local !in meleeFramesHit) {
-                        // Build forward hitbox (same as before; tune per phase if you want)
-                        val reach  = w * 1.4f
-                        val height = h * 1.0f
-                        val feetY  = y + h
-                        val top    = feetY - height
-                        val rect = if (facing == 1) {
-                            val left = x + w * 0.45f
-                            RectF(left, top, left + reach, feetY)
-                        } else {
-                            val right = x + w * 0.55f
-                            RectF(right - reach, top, right, feetY)
-                        }
+                        val rect = buildMeleeRect()
                         onMeleeStrike?.invoke(rect)
                         if (debugShowHitbox) recordMeleeTrail(rect)
                         meleeFramesHit.add(local)
@@ -606,16 +595,16 @@ class Player(
     // ─────────────────────────────────────────────────────────────────────────────
     // Build the melee rect for the current facing / size (same geometry you use to strike)
     private fun buildMeleeRect(): RectF {
-        val reach  = w * 0.95f
+        val reach  = w * 1.37f
         val height = h * 0.6f
         val feetY  = y + h
         val top    = feetY - height
         return if (facing == 1) {
-            val left = x + w * 0.45f
+            val left = x + w * 0.44f
             RectF(left, top, left + reach, feetY)
         } else {
-            val right = x + w * 0.55f
-            RectF(right - reach, top, right, feetY)
+            val left = x - w * 0.8f
+            RectF(left, top, left + reach, feetY)
         }
     }
 

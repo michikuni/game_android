@@ -11,10 +11,10 @@ import android.graphics.Rect
 import android.graphics.RectF
 import androidx.core.graphics.withSave
 import com.example.game_android.R
+import com.example.game_android.game.core.SoundManager
 import com.example.game_android.game.util.BitmapUtils
 import com.example.game_android.game.util.DebugDrawUtils
 import com.example.game_android.game.world.GameState
-import com.example.game_android.game.core.SoundManager
 
 class Skeleton(
     px: Float, py: Float, private val ctx: Context
@@ -35,27 +35,28 @@ class Skeleton(
     // ─────────────────────────────────────────────────────────────────────────────
     // Gameplay / Config
     // ─────────────────────────────────────────────────────────────────────────────
-    var hp = 4
+    var hp = 10
     var alive = true
     var hasHitPlayer = false
 
     private val tile = com.example.game_android.game.core.Constants.TILE.toFloat()
-    private val heightInTiles = 5f
+    private val heightInTiles = 6f
 
     // AI movement tuning
     private val preferredStandOff = 120f
-    private val maxSpeed = 300f
+    private val maxSpeed = 3f
     private val accel = 0.07f
     private val friction = 0.3f
 
     // Firing
-    private val attackCooldownTicks  = 60 * 3               // 3 seconds @ 60 FPS
-    private val CAST_ATTACK_FRAME = 7                       // keyframe (0-based) to spawn projectile
+    private val attackCooldownTicks = 60 * 3               // 3 seconds @ 60 FPS
+    private val CAST_ATTACK_FRAME =
+        7                       // keyframe (0-based) to spawn projectile
     private var attackDelayFrames = 6
     private var attackDelayCounter = 0
 
     // Detection / debug ranges
-    private val triggerRange = 900f
+    private val triggerRange = 600f
     private val attackRangeX = 120f
     private val attackRangeY = 80f
 
@@ -103,7 +104,7 @@ class Skeleton(
 
     private val strips: Map<Anim, Strip> = mapOf(
         Anim.IDLE to loadStrip(R.drawable.skeleton_idle, 13, loop = true),
-        Anim.WALK to loadStrip(R.drawable.skeleton_walk, 11, loop = true),
+        Anim.WALK to loadStrip(R.drawable.skeleton_walk, 17, loop = true),
         Anim.ATTACK to loadStrip(R.drawable.skeleton_attack, 7, loop = false),
         Anim.HURT to loadStrip(R.drawable.skeleton_hurt, 20, loop = false),
         Anim.DEATH to loadStrip(R.drawable.skeleton_death, 9, loop = false),
@@ -116,14 +117,14 @@ class Skeleton(
     private val src = Rect()
     private val dst = RectF()
 
-    private var anim = com.example.game_android.game.entities.Skeleton.Anim.IDLE
+    private var anim = Anim.IDLE
     private var frame = 0
     private var tick = 0
     private var facing = 1
 
     // Debug toggles
     var showHitbox = false
-    var debugShowRanges = false
+    var debugShowRanges = true
 
     // Range paints
     private val rangePaintTrigger = Paint().apply {
@@ -162,7 +163,7 @@ class Skeleton(
     // Init
     // ─────────────────────────────────────────────────────────────────────────────
     init {
-        val ref = strips[com.example.game_android.game.entities.Skeleton.Anim.IDLE]!!
+        val ref = strips[Anim.IDLE]!!
         val aspect = ref.trims[0].width().toFloat() / ref.trims[0].height().toFloat()
         h = heightInTiles * tile
         w = h * aspect * 0.7f
@@ -216,27 +217,85 @@ class Skeleton(
         frame = 0; tick = 0
     }
 
+
+    // How tight the vertical band is for vision/attack eligibility (as a fraction of Skeleton height)
+    private val visionBandRatio = 0.35f
+
+    private fun senseCenterY(): Float = y + h * 0.55f
+    private fun verticalBand(band: Float): Pair<Float, Float> {
+        val cy = senseCenterY()
+        return (cy - band) to (cy + band)
+    }
+
+    // A forward-facing rectangle, aligned to current facing
+    private fun forwardRect(reach: Float, band: Float): RectF {
+        val (top, bottom) = verticalBand(band)
+        val left: Float
+        val right: Float
+        if (facing >= 0) {
+            left = x + w * 0.5f
+            right = x + w * 0.5f + reach
+        } else {
+            left = x + w * 0.5f - reach
+            right = x + w * 0.5f
+        }
+        return RectF(left, top, right, bottom)
+    }
+
+    // Zones that correspond 1:1 with the AI checks
+    private fun visionRect(): RectF =
+        forwardRect(triggerRange, h * visionBandRatio)
+
+    private fun attackEligibilityRect(): RectF =
+        forwardRect(attackRangeX, minOf(attackRangeY, h * visionBandRatio))
+
+    // Public helpers so GameView can use the exact same logic
+    fun canSensePlayer(target: RectF): Boolean = RectF.intersects(visionRect(), target)
+    fun canStartAttackOn(target: RectF): Boolean = RectF.intersects(attackEligibilityRect(), target)
+
+
+    // --- Melee hitbox (forward arc) ---
+    private fun meleeHitbox(): RectF {
+        // forward-facing box at torso height
+        val torsoTop = y + h * 0.20f
+        val torsoBot = y + h * 0.75f
+        val reach = attackRangeX                    // how far forward
+        val insetY = attackRangeY.coerceAtMost((torsoBot - torsoTop)) // keep vertical tidy
+
+        val top = (torsoTop + torsoBot - insetY) * 0.5f
+        val bottom = top + insetY
+
+        val left: Float
+        val right: Float
+
+        if (facing >= 0) {
+            left = x + w * 0.5f
+            right = x + w * 0.5f + reach
+        } else {
+            left = x + w * 0.5f - reach
+            right = x + w * 0.5f
+        }
+        return RectF(left, top, right, bottom)
+    }
+
     fun checkMeleeHit(player: Player, sound: SoundManager, state: GameState) {
         if (!alive || !isAttacking() || hasHitPlayer) return
 
         val attackStrip = strips[Anim.ATTACK]!!
-        val damageFrame = attackStrip.frames - 1  // frame cuối
-        if (frame < damageFrame) return  // chưa đến frame damage → return luôn
+        val damageFrame =
+            attackStrip.frames - 1 // only deal damage at the last keyframe (tweak if needed)
+        if (frame < damageFrame) return
 
-        val attackRect = RectF(
-            x - attackRangeX,        // mở rộng sang trái
-            y - attackRangeY / 2f,  // mở rộng lên trên một nửa
-            x + w + attackRangeX,    // mở rộng sang phải
-            y + h + attackRangeY / 2f // mở rộng xuống dưới một nửa
-        )
+        val hitbox = meleeHitbox()
 
-        if (RectF.intersects(attackRect, player.bounds())) {
+        if (RectF.intersects(hitbox, player.bounds())) {
             hasHitPlayer = true
             player.hit()
             sound.play(SoundManager.Sfx.PlayerHurt)
             if (player.hp <= 0) state.gameOver = true
         }
     }
+
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Update AI + animation
@@ -247,14 +306,18 @@ class Skeleton(
         if (attackCd > 0) attackCd--
         if (invulTicks > 0) invulTicks--
 
-        val dxToPlayer = playerX - (x + w * 0.5f)
+        val dxToPlayer = playerX - (x + w * 0.3f)
         if (kotlin.math.abs(dxToPlayer) > 2f) {
             val s = kotlin.math.sign(dxToPlayer).toInt()
             if (s != 0) facing = s
         }
 
-        val distToPlayer = kotlin.math.abs(dxToPlayer)
-        if (distToPlayer < attackRangeX + w) {
+// Gate for starting an attack: close horizontally, same height band, and in front
+        val sameHeight = kotlin.math.abs(playerY - senseCenterY()) <= (h * visionBandRatio)
+        val inFront    = (dxToPlayer * facing) >= (-w * 0.10f)
+        val closeEnough = kotlin.math.abs(dxToPlayer) <= attackRangeX
+
+        if (closeEnough && sameHeight && inFront) {
             tryAttack(playerX, playerY)
         }
 
@@ -278,8 +341,7 @@ class Skeleton(
                     else {
                         val steer = kotlin.math.sign(desiredVx - vx)
                         vx += accel * steer
-                        if (kotlin.math.abs(vx) > maxSpeed)
-                            vx = maxSpeed * kotlin.math.sign(vx)
+                        if (kotlin.math.abs(vx) > maxSpeed) vx = maxSpeed * kotlin.math.sign(vx)
                     }
                 } else vx *= friction
             }
@@ -366,11 +428,19 @@ class Skeleton(
 
         if (showHitbox) drawDebugHitbox(c)
         if (debugShowRanges) drawDebugRanges(c)
+        if (debugShowRanges && isAttacking()) c.drawRect(meleeHitbox(), meleePaint)
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Debug helpers
     // ─────────────────────────────────────────────────────────────────────────────
+
+    private val meleePaint = Paint().apply {
+        style = Paint.Style.STROKE
+        color = Color.argb(200, 255, 60, 60)
+        strokeWidth = 2f
+    }
+
     private fun drawDebugHitbox(c: Canvas) {
         if (!showHitbox) return
         val pb = physicsBounds()
@@ -382,14 +452,18 @@ class Skeleton(
 
     private fun drawDebugRanges(c: Canvas) {
         if (!debugShowRanges) return
-        val cx = x + w * 0.5f
-        val cy = y + h * 0.55f
-        c.drawCircle(cx, cy, triggerRange, rangePaintTrigger)
-        c.drawText("trigger: ${triggerRange.toInt()}", cx + 8f, cy - triggerRange - 8f, rangeTextPaint)
-        val oval = RectF(cx - attackRangeX, cy - attackRangeY, cx + attackRangeX, cy + attackRangeY)
-        c.drawOval(oval, rangePaintFire)
-        c.drawText("attack: ${attackRangeX.toInt()}x${attackRangeY.toInt()}", oval.left, oval.top - 6f, rangeTextPaint)
+
+        // Blue = vision zone (can "see" the player to begin aggro)
+        val vr = visionRect()
+        c.drawRect(vr, rangePaintTrigger)
+        c.drawText("see", vr.left, vr.top - 6f, rangeTextPaint)
+
+        // Orange = attack eligibility zone (may start an attack)
+        val ar = attackEligibilityRect()
+        c.drawRect(ar, rangePaintFire)
+        c.drawText("attack", ar.left, ar.top - 6f, rangeTextPaint)
     }
+
 
     private fun physicsBounds(): RectF = RectF(x, y, x + w, y + h)
     private fun visualBounds(): RectF = RectF(dst)
