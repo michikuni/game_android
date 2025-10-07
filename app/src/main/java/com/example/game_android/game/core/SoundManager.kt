@@ -32,6 +32,12 @@ class SoundManager(val ctx: Context) {
     val bgmVolumeUi: Float get() = bgmVol.ui
     val sfxVolumeUi: Float get() = sfxVol.ui
 
+    // Map Sfx -> raw resource (for one-shots via MediaPlayer)
+    private val sfxRaw = hashMapOf<Sfx, Int>()
+
+    // A dedicated player for longer cinematic one-shots (with completion callback)
+    private var cinematicMp: MediaPlayer? = null
+
     private val bgmVol = VolumeControl(ui = 1f, master = 0.5f, minDb = -50f)
     private val sfxVol = VolumeControl(ui = 1f, master = 0.6f, minDb = -45f)
 
@@ -93,19 +99,13 @@ class SoundManager(val ctx: Context) {
     // ------------------------------
     // SFX
     // ------------------------------
-    private val soundPool: SoundPool = SoundPool.Builder()
-        .setMaxStreams(8)
-        .setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_GAME)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
+    private val soundPool: SoundPool = SoundPool.Builder().setMaxStreams(8).setAudioAttributes(
+            AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
         ).build()
 
     enum class Sfx {
-        ArrowHitEnemy, PlayerDie, PlayerWalk, PlayerHurt, PlayerShoot,
-        ArrowHitWall, FireballExplode, FireballShoot, WitchHurt, WitchDie,
-        DaggerSwing, GoblinDie, SkeletonDie, SwordSwing, SkeletonHurt, GoblinHurt
+        ArrowHitEnemy, PlayerDie, PlayerWalk, PlayerHurt, PlayerShoot, ArrowHitWall, FireballExplode, FireballShoot, WitchHurt, WitchDie, DaggerSwing, GoblinDie, SkeletonDie, SwordSwing, SkeletonHurt, GoblinHurt, RockCinematic, BossRoar, ShootBeam, GolemHurt, GolemMelee, GolemMissile, RockExplode, ArmorBuff, Victory
     }
 
     private val sfxIds = hashMapOf<Sfx, Int>()
@@ -114,6 +114,7 @@ class SoundManager(val ctx: Context) {
         register(ctx, Sfx.ArrowHitEnemy, R.raw.arrow_hit_enemy)
         register(ctx, Sfx.PlayerHurt, R.raw.terraria_male_player_hurt_sound)
         register(ctx, Sfx.PlayerShoot, R.raw.bow_load_and_release)
+        register(ctx, Sfx.PlayerDie, R.raw.player_die)
         register(ctx, Sfx.ArrowHitWall, R.raw.arrow_hit_wall)
         register(ctx, Sfx.PlayerWalk, R.raw.walk4)
         register(ctx, Sfx.FireballExplode, R.raw.fireball_explode)
@@ -126,10 +127,71 @@ class SoundManager(val ctx: Context) {
         register(ctx, Sfx.SkeletonDie, R.raw.skeleton_death)
         register(ctx, Sfx.SwordSwing, R.raw.sword_swing)
         register(ctx, Sfx.SkeletonHurt, R.raw.skeleton_hurt)
+        register(ctx, Sfx.RockCinematic, R.raw.rock_cinematic2)
+        register(ctx, Sfx.BossRoar, R.raw.boss_roar)
+        register(ctx, Sfx.ShootBeam, R.raw.shoot_beam)
+        register(ctx, Sfx.GolemHurt, R.raw.golem_hurt)
+        register(ctx, Sfx.GolemMelee, R.raw.golem_melee)
+        register(ctx, Sfx.GolemMissile, R.raw.golem_missile)
+        register(ctx, Sfx.RockExplode, R.raw.rock_explode)
+        register(ctx, Sfx.ArmorBuff, R.raw.golem_armor_buff)
+        register(ctx, Sfx.Victory, R.raw.yayy)
     }
 
     private fun register(context: Context, kind: Sfx, @RawRes rawId: Int) {
+        sfxRaw[kind] = rawId                 // <-- add this
         sfxIds[kind] = soundPool.load(context, rawId, 1)
+    }
+
+    /** Play a longer SFX as a one-shot (uses MediaPlayer so we can get onComplete). */
+    fun playCinematic(kind: Sfx, volume: Float = 1f, onComplete: (() -> Unit)? = null) {
+        val raw = sfxRaw[kind] ?: return
+        playCinematicRaw(raw, volume, onComplete)
+    }
+
+    fun playCinematicRaw(@RawRes rawId: Int, volume: Float = 1f, onComplete: (() -> Unit)? = null) {
+        // Stop prior cinematic if any
+        try {
+            cinematicMp?.setOnCompletionListener(null); cinematicMp?.stop(); cinematicMp?.release()
+        } catch (_: Exception) {
+        }
+        cinematicMp = MediaPlayer.create(ctx.applicationContext, rawId)?.apply {
+            isLooping = false
+            val v = (sfxVol.applied() * volume).coerceIn(0f, 1f)
+            setVolume(v, v)
+            setOnCompletionListener {
+                onComplete?.invoke()
+                try {
+                    it.release()
+                } catch (_: Exception) {
+                }
+                cinematicMp = null
+            }
+            start()
+        }
+    }
+
+    fun stopCinematic() {
+        try {
+            cinematicMp?.stop(); cinematicMp?.release()
+        } catch (_: Exception) {
+        }
+        cinematicMp = null
+    }
+
+
+    /** Replace current BGM track and (optionally) start it. */
+    fun switchBgm(@RawRes rawId: Int, autoplay: Boolean = true) {
+        try {
+            bgm?.stop(); bgm?.release()
+        } catch (_: Exception) {
+        }
+        bgm = MediaPlayer.create(ctx.applicationContext, rawId)?.apply {
+            isLooping = true
+            val v = bgmVol.applied()
+            setVolume(v, v)
+            if (autoplay && v > 0.0005f) start()
+        }
     }
 
     // SFX controls
@@ -164,6 +226,8 @@ class SoundManager(val ctx: Context) {
     fun playSwordSwing() = play(Sfx.SwordSwing, volume = 1f, rate = 1f)
     fun playSkeletonDie() = play(Sfx.SkeletonDie, volume = 1f, rate = 1f)
     fun playGoblinDie() = play(Sfx.GoblinDie, volume = 1f, rate = 1f)
+    fun playShootBeam() = play(Sfx.ShootBeam, volume = 0.5f, rate = 1f)
+    fun playRockExplode() = play(Sfx.RockExplode, volume = 0.5f, rate = 1f)
 
     // ------------------------------
     // Lifecycle

@@ -25,11 +25,13 @@ data class Strip(
             var maxH = 1
             for (i in 0 until frames) {
                 val sx = i * fw
+                // Create a view for trim computation only; do NOT recycle here.
                 val frameBmp = Bitmap.createBitmap(bmp, sx, 0, fw, fh)
                 val local = BitmapUtils.computeOpaqueBounds(frameBmp) ?: Rect(0, 0, fw, fh)
                 trims += Rect(sx + local.left, local.top, sx + local.right, local.bottom)
                 maxH = maxOf(maxH, local.height().coerceAtLeast(1))
-                frameBmp.recycle()
+                // Avoid recycling frameBmp: it can mark shared pixel memory as recycled on some devices.
+                // Let GC collect the temporary once out of scope.
             }
             return Strip(bmp, frames, fw, fh, speed, loop, trims, baseHpx = maxH)
         }

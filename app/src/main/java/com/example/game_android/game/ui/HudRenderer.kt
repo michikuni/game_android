@@ -9,7 +9,6 @@ import android.view.MotionEvent
 import androidx.annotation.DrawableRes
 import androidx.appcompat.content.res.AppCompatResources
 import com.example.game_android.R
-import com.example.game_android.game.entities.Boss
 import com.example.game_android.game.entities.Player
 import com.example.game_android.game.core.InputController
 import com.example.game_android.game.core.InputController.BtnKind
@@ -146,12 +145,14 @@ class HudRenderer(private val input: InputController, private val context: Conte
     fun drawHud(
         c: Canvas,
         player: Player,
-        boss: Boss,
         ammoCapacity: Int,
-        ammoCount: Int
+        ammoCount: Int,
+        maxHp: Int = 3,
+        score: Int = 0,
+        highScore: Int = 0,
     ) {
         // --- Hearts ---
-        repeat(3) { i ->
+        repeat(maxHp) { i ->
             val left = heartsLeftStart + i * (heartSize + heartGap)
             val dst = RectF(left, heartsTop, left + heartSize, heartsTop + heartSize)
 
@@ -181,16 +182,12 @@ class HudRenderer(private val input: InputController, private val context: Conte
             }
         }
 
-        // --- Boss HP ---
-        if (boss.alive) {
-            val barW = c.width * 0.4f
-            val bar = RectF(c.width / 2f - barW / 2, 16f, c.width / 2f + barW / 2, 28f)
-            p.color = Color.GRAY
-            c.drawRect(bar, p)
-            p.color = Color.MAGENTA
-            val w = barW * (boss.hp / 30f)
-            c.drawRect(RectF(bar.left, bar.top, bar.left + w, bar.bottom), p)
-        }
+        t.textAlign = Paint.Align.LEFT
+        t.textSize = dp(16f)
+        t.color = Color.WHITE
+        val scoreY = ammoTop + ammoSize + dp(16f)
+        c.drawText("Score: $score", heartsLeftStart, scoreY, t)
+        c.drawText("High:  $highScore", heartsLeftStart, scoreY + dp(18f), t)
 
         // --- HUD buttons ---
         input.buttons().forEach { spec ->
@@ -297,8 +294,10 @@ class HudRenderer(private val input: InputController, private val context: Conte
     fun drawOverlays(
         c: Canvas,
         s: GameState,
-        bgVol: Float,                 // 0..1 current BGM volume
-        sfxVol: Float,                // 0..1 current SFX volume
+        bgVol: Float,
+        sfxVol: Float,
+        score: Int,
+        highScore: Int
     ) {
         Log.d("HudRenderer", "drawOverlays: paused=${s.paused} gameOver=${s.gameOver} victory=${s.victory} bgVol=${bgVol} sfxVol=${sfxVol}")
         clearOverlayRects()
@@ -362,15 +361,23 @@ class HudRenderer(private val input: InputController, private val context: Conte
         }
 
         if (s.victory) {
-            c.drawText("VICTORY!", c.width/2f, c.height*0.35f, t)
+            c.drawText("VICTORY!", c.width/2f, c.height*0.30f, t)
+
+            // Score lines
+            t.textSize = 42f
+            t.textAlign = Paint.Align.CENTER
+            c.drawText("Score: $score",      c.width/2f, c.height*0.38f, t)
+            c.drawText("High Score: $highScore", c.width/2f, c.height*0.44f, t)
+
             val bw = c.width*0.4f; val bh = c.height*0.12f
             victoryExitRect.set(
-                c.width/2f - bw/2, c.height*0.45f,
-                c.width/2f + bw/2, c.height*0.45f + bh
+                c.width/2f - bw/2, c.height*0.55f,
+                c.width/2f + bw/2, c.height*0.55f + bh
             )
             drawButtonFromText(c, victoryExitRect, "Back to Menu")
             return
         }
+
     }
 
     fun handleTouch(

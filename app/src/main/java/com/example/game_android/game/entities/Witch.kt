@@ -37,6 +37,7 @@ class Witch(
 
     private val tile = com.example.game_android.game.core.Constants.TILE.toFloat()
     private val heightInTiles = 6.5f
+    val score = 150
 
     // AI movement tuning
     private val preferredStandOff = 260f

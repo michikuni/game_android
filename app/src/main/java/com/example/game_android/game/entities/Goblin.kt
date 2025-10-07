@@ -38,6 +38,7 @@ class Goblin(
     var hp = 3
     var alive = true
     var hasHitPlayer = false
+    val score = 100
 
     private val tile = com.example.game_android.game.core.Constants.TILE.toFloat()
     private val heightInTiles = 3.5f

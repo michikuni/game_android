@@ -10,6 +10,7 @@ import android.graphics.RectF
 import androidx.core.graphics.withSave
 import com.example.game_android.R
 import com.example.game_android.game.util.DebugDrawUtils
+import com.example.game_android.game.util.SpriteDraw
 import com.example.game_android.game.util.Strip
 import com.example.game_android.game.world.GameState
 import kotlin.math.abs
@@ -31,21 +32,27 @@ class Player(
     override var h = 1f
     override var canJump = false
     override var wasJump = false
+    val damageDealtToBoss = 20
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Event listeners
     // ─────────────────────────────────────────────────────────────────────────────
-    var onDeath: (() -> Unit)? = null
     var onHurt: (() -> Unit)? = null
     var onShootArrow: (() -> Unit)? = null
     var onMeleeStrike: ((RectF) -> Unit)? = null
+    var onDeathStart: (() -> Unit)? = null    // fire when death begins
+    var onDeathEnd: (() -> Unit)? = null    // fire when DIE anim finishes
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Gameplay / Config
     // ─────────────────────────────────────────────────────────────────────────────
-    var hp = 3
+    val maxHp = 5
+    var hp = maxHp
     private val tile = com.example.game_android.game.core.Constants.TILE.toFloat()
     private val heightInTiles = 6f
+
+    private var dying = false
+    private var deathNotified = false
 
     // Visual scale (doesn't change collisions)
     private val renderScale = 1.2f
@@ -64,10 +71,11 @@ class Player(
 
     // ── Combo definition: N phases with (frame range within MELEE strip) + local damage frames
     data class MeleePhase(val range: IntRange, val damageFramesLocal: Set<Int>)
+
     var meleePhases: List<MeleePhase> = listOf(
-        MeleePhase(0..8,  setOf(4)),
+        MeleePhase(0..8, setOf(4)),
         MeleePhase(9..17, setOf(14)),
-        MeleePhase(18..27,setOf(20))
+        MeleePhase(18..27, setOf(20))
     )
 
     // Current combo state
@@ -80,7 +88,7 @@ class Player(
 
     // Hurt
     private var hurtTimer = 0
-    private val hurtDuration = 10
+    private val hurtDuration = 20
 
     // Quiver
     val maxAmmo = 5
@@ -88,7 +96,7 @@ class Player(
     val ammo get() = quiver.ammo()
 
     // Debug
-    var debugShowHitbox = true
+    var debugShowHitbox = false
 
     // ── DEBUG: melee hitbox overlay ────────────────────────────────────────────────
     private data class FadingRect(val rect: RectF, var ttl: Int)
@@ -112,8 +120,7 @@ class Player(
     // Animation assets / structures
     // ─────────────────────────────────────────────────────────────────────────────
     private enum class Anim {
-        IDLE, WALK, ATTACK, HURT, MELEE,
-        START_JUMP, JUMP, START_FALL, FALL, LAND
+        IDLE, WALK, ATTACK, HURT, MELEE, START_JUMP, JUMP, START_FALL, FALL, LAND, DIE
     }
 
     // Base strips
@@ -122,7 +129,23 @@ class Player(
         Anim.WALK to Strip.loadStrip(ctx, R.drawable.archer_run, 1, loop = true),
         Anim.ATTACK to Strip.loadStrip(ctx, R.drawable.archer_attack, 1, loop = false),
         Anim.MELEE to Strip.loadStrip(ctx, R.drawable.archer_melee2, 1, loop = false),
-        Anim.HURT to Strip.loadStrip(ctx, R.drawable.archer_hurt, 2, loop = false)
+        Anim.HURT to Strip.loadStrip(ctx, R.drawable.archer_hurt, 2, loop = false),
+        Anim.DIE to Strip.loadStrip(ctx, R.drawable.archer_death, 2, loop = false),
+    )
+
+    // Physics (w/h) do NOT change — only the rendered sprite size.
+    private val animScaleMul: Map<Anim, Float> = mapOf(
+        Anim.IDLE to 1.00f,
+        Anim.WALK to 0.9f,
+        Anim.ATTACK to 1.00f,
+        Anim.MELEE to 1.1f,     // make melee read bigger
+        Anim.HURT to 1.00f,
+        Anim.START_JUMP to 1.00f,
+        Anim.JUMP to 0.9f,
+        Anim.START_FALL to 1.00f,
+        Anim.FALL to 1.00f,
+        Anim.LAND to 1.00f,
+        Anim.DIE to 1.00f        // a bit more dramatic
     )
 
     // Air sequence (jump+fall+land in one strip)
@@ -144,7 +167,8 @@ class Player(
         val range: IntRange,
         val speed: Int,
         val loop: Boolean,
-        val baseHpx: Int
+        val baseHpx: Int,
+        val variableHeight: Boolean
     ) {
         val length: Int get() = range.last - range.first + 1
         fun trimAt(localFrame: Int): Rect =
@@ -152,22 +176,30 @@ class Player(
 
         companion object {
             fun of(strip: Strip, range: IntRange, speed: Int, loop: Boolean): AnimClip {
-                // compute tallest frame height only within the selected range
                 var maxH = 1
+                var minH = Int.MAX_VALUE
                 for (i in range) {
                     val r = strip.trims[i]
                     val h = (r.bottom - r.top).coerceAtLeast(1)
-                    if (h > maxH) maxH = h
+                    maxH = maxOf(maxH, h)
+                    minH = minOf(minH, h)
                 }
-                return AnimClip(strip, range, speed, loop, baseHpx = maxH)
+                val variable = (maxH - minH) > 2      // tolerance of 2px
+                return AnimClip(
+                    strip,
+                    range,
+                    speed,
+                    loop,
+                    baseHpx = maxH,
+                    variableHeight = variable
+                )
             }
         }
     }
 
     private val clips: Map<Anim, AnimClip> = buildMap {
         put(
-            Anim.IDLE,
-            AnimClip.of(
+            Anim.IDLE, AnimClip.of(
                 strips[Anim.IDLE]!!,
                 0 until strips[Anim.IDLE]!!.frames,
                 strips[Anim.IDLE]!!.speed,
@@ -175,8 +207,7 @@ class Player(
             )
         )
         put(
-            Anim.WALK,
-            AnimClip.of(
+            Anim.WALK, AnimClip.of(
                 strips[Anim.WALK]!!,
                 0 until strips[Anim.WALK]!!.frames,
                 strips[Anim.WALK]!!.speed,
@@ -184,8 +215,7 @@ class Player(
             )
         )
         put(
-            Anim.ATTACK,
-            AnimClip.of(
+            Anim.ATTACK, AnimClip.of(
                 strips[Anim.ATTACK]!!,
                 0 until strips[Anim.ATTACK]!!.frames,
                 strips[Anim.ATTACK]!!.speed,
@@ -193,8 +223,7 @@ class Player(
             )
         )
         put(
-            Anim.MELEE,
-            AnimClip.of(
+            Anim.MELEE, AnimClip.of(
                 strips[Anim.MELEE]!!,
                 0 until strips[Anim.MELEE]!!.frames,
                 strips[Anim.MELEE]!!.speed,
@@ -202,11 +231,18 @@ class Player(
             )
         )
         put(
-            Anim.HURT,
-            AnimClip.of(
+            Anim.HURT, AnimClip.of(
                 strips[Anim.HURT]!!,
                 0 until strips[Anim.HURT]!!.frames,
                 strips[Anim.HURT]!!.speed,
+                false
+            )
+        )
+        put(
+            Anim.DIE, AnimClip.of(
+                strips[Anim.DIE]!!,
+                0 until strips[Anim.DIE]!!.frames,
+                strips[Anim.DIE]!!.speed,
                 false
             )
         )
@@ -254,6 +290,26 @@ class Player(
         setAnim(Anim.START_JUMP)
     }
 
+    /** Hard-cancel ranged + melee and switch to a neutral pose for cutscenes. */
+    fun forceIdleForCutscene(clearHurtBlink: Boolean = true) {
+        // stop any movement-driven pose changes from firing more attacks
+        attackRequested = false
+        meleeRequested = false
+
+        // cancel active attack/melee state machines
+        firedThisAttack = true             // ensure no arrow fires later
+        meleePhaseIdx = -1
+        meleeFramesHit.clear()
+        lastLocalFrameSeen = -1
+        lastMeleeFrameEmitted = -1
+
+        if (clearHurtBlink) hurtTimer = 0  // optional: remove hurt flashing
+
+        // neutral pose; don't touch canJump — we'll settle to ground in GameView
+        setAnim(Anim.IDLE)
+        vx = 0f
+    }
+
     fun tryShoot(out: MutableList<Projectile>) {
         val dir = when {
             vx > 0.05f -> 1
@@ -286,16 +342,26 @@ class Player(
     }
 
     fun hit() {
+        if (hurtTimer > 0 || dying) return
         if (hp > 0) {
             hp--
-            hurtTimer = hurtDuration
+            if (hp <= 0 && !dying) {
+                dying = true
+                hurtTimer = 0         // ← stop blink immediately
+                vx = 0f; vy = 0f
+                setAnim(Anim.DIE)
+                onDeathStart?.invoke()
+            } else if (!dying) {
+                hurtTimer = hurtDuration
+            }
         }
     }
 
     fun reset(px: Float, py: Float) {
         x = px; y = py; vx = 0f; vy = 0f
-        hp = 3; canJump = false; wasJump = false
+        hp = maxHp; canJump = false; wasJump = false
         frame = 0; tick = 0; facing = 1
+        dying = false; deathNotified = false
         setAnim(Anim.IDLE)
     }
 
@@ -328,9 +394,10 @@ class Player(
 
 
     fun draw(c: Canvas, gameState: GameState) {
-        // Facing from velocity
+        // ── Facing from velocity ─────────────────────────────────────────────────────
         if (vx > 0.05f) facing = 1 else if (vx < -0.05f) facing = -1
 
+        // ── Ground/air flags ────────────────────────────────────────────────────────
         val grounded = canJump
         val leavingGround = !grounded && wasGroundedLastFrame
         val landedThisFrame = grounded && !wasGroundedLastFrame
@@ -343,71 +410,75 @@ class Player(
         val landClip = clips[Anim.LAND]!!
         val landPlaying = (anim == Anim.LAND && frame < landClip.length - 1)
 
-
         if (meleeCooldownTicks > 0) meleeCooldownTicks--
 
-        // --- Priority overrides & state selection ---
-        when {
-            hurtTimer > 0 -> setAnim(Anim.HURT)
+        // ── State selection (animation FSM) ─────────────────────────────────────────
+        if (!dying) {
+            when {
+                hurtTimer > 0 -> setAnim(Anim.HURT)
 
-            // Start combo if requested
-            (meleeRequested && meleeCooldownTicks == 0 && anim != Anim.MELEE) -> {
-                startMeleePhase(0)               // start Phase 1
-                meleeRequested = false
-            }
-
-            // MELEE first: if already playing OR requested
-            anim == Anim.MELEE || meleeRequested -> setAnim(Anim.MELEE)
-
-            // RANGED next: if already playing OR requested + canFire
-            anim == Anim.ATTACK || (attackRequested && quiver.canFire()) -> setAnim(Anim.ATTACK)
-            else -> {
-                // 1) WALK can interrupt LAND mid-animation if moving
-                if (landPlaying && movingOnGround) {
-                    setAnim(Anim.WALK)
+                // Start combo if requested
+                (meleeRequested && meleeCooldownTicks == 0 && anim != Anim.MELEE) -> {
+                    startMeleePhase(0)
+                    meleeRequested = false
                 }
-                // 2) Keep LAND if not moving
-                else if (landPlaying && grounded && !movingOnGround) {
-                    /* sticky LAND until finish */
-                } else {
-                    // 3) Normal locomotion flow
-                    when {
-                        landedThisFrame -> {
-                            if (movingOnGround) setAnim(Anim.WALK) else setAnim(Anim.LAND)
-                        }
 
-                        !grounded -> {
-                            if (leavingGround) {
-                                setAnim(if (ascending) Anim.START_JUMP else Anim.START_FALL)
-                            } else {
-                                when (anim) {
-                                    Anim.START_JUMP -> { /* wait */
+                // Keep MELEE if already in it (or just requested)
+                anim == Anim.MELEE || meleeRequested -> setAnim(Anim.MELEE)
+
+                // Ranged
+                anim == Anim.ATTACK || (attackRequested && quiver.canFire()) -> setAnim(Anim.ATTACK)
+
+                else -> {
+                    // 1) WALK can interrupt LAND mid-animation if moving
+                    if (landPlaying && movingOnGround) {
+                        setAnim(Anim.WALK)
+                    }
+                    // 2) Keep LAND if not moving
+                    else if (landPlaying && grounded && !movingOnGround) {
+                        /* sticky LAND until finish */
+                    } else {
+                        // 3) Normal locomotion flow
+                        when {
+                            landedThisFrame -> {
+                                if (movingOnGround) setAnim(Anim.WALK) else setAnim(Anim.LAND)
+                            }
+
+                            !grounded -> {
+                                if (leavingGround) {
+                                    setAnim(if (ascending) Anim.START_JUMP else Anim.START_FALL)
+                                } else {
+                                    when (anim) {
+                                        Anim.START_JUMP -> { /* wait */
+                                        }
+
+                                        Anim.JUMP -> if (descending) setAnim(Anim.START_FALL)
+                                        Anim.START_FALL -> { /* wait */
+                                        }
+
+                                        Anim.FALL -> { /* loop */
+                                        }
+
+                                        Anim.LAND -> setAnim(Anim.FALL)
+                                        else -> setAnim(if (ascending) Anim.JUMP else Anim.FALL)
                                     }
-
-                                    Anim.JUMP -> if (descending) setAnim(Anim.START_FALL)
-                                    Anim.START_FALL -> { /* wait */
-                                    }
-
-                                    Anim.FALL -> { /* loop */
-                                    }
-
-                                    Anim.LAND -> setAnim(Anim.FALL)
-                                    else -> setAnim(if (ascending) Anim.JUMP else Anim.FALL)
                                 }
                             }
-                        }
 
-                        else -> {
-                            if (anim != Anim.LAND && anim != Anim.MELEE) {   // <── add this guard
-                                setAnim(if (movingOnGround) Anim.WALK else Anim.IDLE)
+                            else -> {
+                                if (anim != Anim.LAND && anim != Anim.MELEE) {
+                                    setAnim(if (movingOnGround) Anim.WALK else Anim.IDLE)
+                                }
                             }
                         }
                     }
                 }
             }
+        } else {
+            setAnim(Anim.DIE) // keep DIE selected once dying
         }
 
-        // Advance frames in current clip
+        // ── Frame advance ───────────────────────────────────────────────────────────
         val clip = clips[anim]!!
         if (++tick % clip.speed == 0) {
             if (anim == Anim.MELEE && meleePhaseIdx >= 0) {
@@ -419,15 +490,16 @@ class Player(
             }
         }
 
-        // Post-step transitions for one-shots
+        // ── Post-step transitions / one-shots ───────────────────────────────────────
         when (anim) {
             Anim.START_JUMP -> if (frame >= clip.length - 1) setAnim(Anim.JUMP)
             Anim.START_FALL -> if (frame >= clip.length - 1) setAnim(Anim.FALL)
 
             Anim.MELEE -> {
                 val r = meleePhases[meleePhaseIdx].range
-                // Emit damage on exact local frames, once each
                 val local = (frame - r.first).coerceAtLeast(0)
+
+                // Single-fire damage frames per phase (local indices)
                 if (local != lastLocalFrameSeen) {
                     lastLocalFrameSeen = local
                     val dmgSet = meleePhases[meleePhaseIdx].damageFramesLocal
@@ -439,18 +511,17 @@ class Player(
                     }
                 }
 
-                // Phase end → either chain to next (if held) or finish combo
+                // Phase chaining or finish
                 if (frame >= r.last) {
                     val nextIdx = meleePhaseIdx + 1
                     if (meleeHeld && nextIdx < meleePhases.size) {
-                        startMeleePhase(nextIdx)     // chain — uninterruptible next phase
+                        startMeleePhase(nextIdx)
                     } else {
-                        // finish combo
-                        val movingOnGround = kotlin.math.abs(vx) > 0.12f
+                        val moving = abs(vx) > 0.12f
                         setAnim(
                             when {
                                 !canJump -> Anim.FALL
-                                movingOnGround -> Anim.WALK
+                                moving -> Anim.WALK
                                 else -> Anim.IDLE
                             }
                         )
@@ -460,36 +531,38 @@ class Player(
                 }
             }
 
-            // LAND finishes into WALK/IDLE (no attackTimer check anymore)
             Anim.LAND -> if (frame >= clip.length - 1 && hurtTimer == 0) {
-                val movingOnGround = abs(vx) > 0.12f
-                setAnim(if (movingOnGround) Anim.WALK else Anim.IDLE)
+                val moving = abs(vx) > 0.12f
+                setAnim(if (moving) Anim.WALK else Anim.IDLE)
             }
-            // ── NEW: loop ATTACK if still held and quiver ready; else exit to locomotion
+
+            // Loop ATTACK if held & ammo ready
             Anim.ATTACK -> if (frame >= clip.length - 1) {
                 if (attackRequested && quiver.canFire()) {
-                    // restart attack animation
                     frame = 0
                     tick = 0
                     firedThisAttack = false
-                    // keep anim = ATTACK
                 } else {
-                    // fall back to movement state
-                    val grounded = canJump
-                    val movingOnGround = kotlin.math.abs(vx) > 0.12f
+                    val moving = abs(vx) > 0.12f
                     setAnim(
                         when {
                             !grounded -> Anim.FALL
-                            movingOnGround -> Anim.WALK
+                            moving -> Anim.WALK
                             else -> Anim.IDLE
                         }
                     )
                 }
             }
 
+            Anim.DIE -> if (frame >= clip.length - 1 && !deathNotified) {
+                deathNotified = true
+                onDeathEnd?.invoke()
+            }
+
             else -> {}
         }
 
+        // ── Fire arrow on the keyframe ──────────────────────────────────────────────
         if (anim == Anim.ATTACK && !firedThisAttack && frame >= ATTACK_FIRE_FRAME) {
             val out = queuedOut
             if (out != null && quiver.tryConsume(gameState)) {
@@ -501,8 +574,7 @@ class Player(
                 onShootArrow?.invoke()
             }
             firedThisAttack = true
-            // keep queuedOut so we can keep using same list while held; safe to keep or null it
-            // queuedOut = null
+            // keep queuedOut for continuous fire while held
         }
 
         // --- Frame-exact MELEE damage emission ---
@@ -531,74 +603,53 @@ class Player(
             }
         }
 
-
-        // Re-fetch in case setAnim changed
         val effClip = clips[anim]!!
-
-        // Source rect from trimmed frame
         val trim = effClip.trimAt(frame)
-        srcRect.set(trim.left, trim.top, trim.right, trim.bottom)
 
-        // ── Scale mode:
-        // FIT_HEIGHT for stable-height clips (IDLE/WALK/ATTACK),
-        // PIXEL_SCALE for variable-height clips (air clips + HURT) using tallest frame in the clip.
-        val usePixelScale = when (anim) {
-            Anim.START_JUMP, Anim.JUMP, Anim.START_FALL, Anim.FALL, Anim.LAND, Anim.HURT, Anim.MELEE -> true
-            else -> false
-        }
+        val mul = animScaleMul[anim] ?: 1f
+        val targetWorldH = desiredWorldH
 
-        val srcWpx = (trim.right - trim.left).toFloat()
-        val srcHpx = (trim.bottom - trim.top).toFloat()
-        val targetRefH = desiredWorldH
+        val layout = SpriteDraw.layoutBottomCenter(
+            baseHpx = effClip.baseHpx,
+            targetWorldH = targetWorldH,
+            mul = mul,
+            x = x, y = y, w = w, h = h,
+            trim = trim
+        )
+        srcRect.set(layout.src)
+        dstRect.set(layout.dst)
 
-        val scale = if (!usePixelScale) {
-            // All frames have the same on-screen height
-            targetRefH / srcHpx
-        } else {
-            // Constant pixel→world scale based on tallest frame in THIS CLIP
-            targetRefH / effClip.baseHpx.toFloat()
-        }
-
-        val drawW = srcWpx * scale
-        val drawH = srcHpx * scale
-
-        // Bottom align (feet on ground), horizontally center around physics box
-        val left = x - kotlin.math.abs(drawW - w) / 2f
-        val top = y + h - drawH
-        dstRect.set(left, top, left + drawW, top + drawH)
-
-        // Timers
+        // ── Timers & quiver ─────────────────────────────────────────────────────────
         if (hurtTimer > 0) hurtTimer--
-
-        // Quiver reload
         quiver.tick(gameState)
 
-        // Draw (blink while hurt)
-        val blink = (hurtTimer > 0) && ((hurtTimer / 2) % 2 == 0)
+        // ── Draw (blink while hurt) ─────────────────────────────────────────────────
+        val blink = (hurtTimer > 0) && !dying && ((hurtTimer / 2) % 2 == 0)
         c.withSave {
             if (facing == -1) c.scale(-1f, 1f, dstRect.centerX(), dstRect.centerY())
             if (!blink) c.drawBitmap(effClip.strip.bmp, srcRect, dstRect, paint)
         }
 
-        // Debug
+        // ── Debug ───────────────────────────────────────────────────────────────────
         if (debugShowHitbox) drawDebugHitbox(c)
         if (debugShowHitbox) drawDebugMeleeHitboxes(c)
 
-        // Remember for next frame
+        // ── Bookkeeping ─────────────────────────────────────────────────────────────
         wasGroundedLastFrame = grounded
         attackRequested = false
         meleeRequested = false
     }
+
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Debug helpers
     // ─────────────────────────────────────────────────────────────────────────────
     // Build the melee rect for the current facing / size (same geometry you use to strike)
     private fun buildMeleeRect(): RectF {
-        val reach  = w * 1.37f
+        val reach = w * 1.37f
         val height = h * 0.6f
-        val feetY  = y + h
-        val top    = feetY - height
+        val feetY = y + h
+        val top = feetY - height
         return if (facing == 1) {
             val left = x + w * 0.44f
             RectF(left, top, left + reach, feetY)
