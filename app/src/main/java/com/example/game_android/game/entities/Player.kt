@@ -40,6 +40,11 @@ class Player(
     var onHurt: (() -> Unit)? = null
     var onShootArrow: (() -> Unit)? = null
     var onMeleeStrike: ((RectF) -> Unit)? = null
+    var onArrowMeleeSwing: (() -> Unit)? = null
+    private val arrowMeleeSwingFrame = 4
+    var onBowMeleeSpin: (() -> Unit)? = null
+    private val bowMeleeSpinFrame = 14
+    var onBowLoading: (() -> Unit)? = null
     var onDeathStart: (() -> Unit)? = null    // fire when death begins
     var onDeathEnd: (() -> Unit)? = null    // fire when DIE anim finishes
 
@@ -88,12 +93,18 @@ class Player(
 
     // Hurt
     private var hurtTimer = 0
-    private val hurtDuration = 20
+    private val hurtDuration = 10
 
-    // Quiver
-    val maxAmmo = 5
-    private val quiver = Quiver(maxAmmo = maxAmmo, cooldownTicks = 60)
+    // ─────────────────────────────────────────────────────────────────────────────
+// Quiver (pickup-only)
+// ─────────────────────────────────────────────────────────────────────────────
+    val maxAmmo = 20
+    private var baseMaxAmmo = 0
+    private val quiver = PickupQuiver(maxAmmo = maxAmmo, initialAmmo = maxAmmo)
     val ammo get() = quiver.ammo()
+
+    /** Expose addAmmo so GameView can apply pickups. Returns actually added. */
+    fun addAmmo(amount: Int): Int = quiver.addAmmo(amount)
 
     // Debug
     var debugShowHitbox = false
@@ -280,6 +291,7 @@ class Player(
         val aspect = trim0.width().toFloat() / trim0.height().toFloat()
         h = heightInTiles * tile
         w = h * aspect * 0.75f
+        baseMaxAmmo = maxAmmo
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -318,7 +330,7 @@ class Player(
         }
         facing = dir
 
-        // mark requested; Player.draw() will start/loop ATTACK if possible
+        // mark requested;
         attackRequested = true
         queuedOut = out
         queuedDir = dir
@@ -345,13 +357,14 @@ class Player(
         if (hurtTimer > 0 || dying) return
         if (hp > 0) {
             hp--
-            if (hp <= 0 && !dying) {
+            if (hp <= 0) {
                 dying = true
                 hurtTimer = 0         // ← stop blink immediately
                 vx = 0f; vy = 0f
                 setAnim(Anim.DIE)
                 onDeathStart?.invoke()
-            } else if (!dying) {
+            } else {
+                onHurt?.invoke()
                 hurtTimer = hurtDuration
             }
         }
@@ -362,6 +375,7 @@ class Player(
         hp = maxHp; canJump = false; wasJump = false
         frame = 0; tick = 0; facing = 1
         dying = false; deathNotified = false
+        quiver.setAmmoUnsafe(maxAmmo)
         setAnim(Anim.IDLE)
     }
 
@@ -563,23 +577,33 @@ class Player(
         }
 
         // ── Fire arrow on the keyframe ──────────────────────────────────────────────
-        if (anim == Anim.ATTACK && !firedThisAttack && frame >= ATTACK_FIRE_FRAME) {
-            val out = queuedOut
-            if (out != null && quiver.tryConsume(gameState)) {
-                var spawnX = x + w / 2f
-                if (facing == -1) spawnX -= w * 2.45f
-                val spawnY = y + h * 0.23f
-                val speed = 17.0f
-                out.add(Arrow(spawnX, spawnY, speed * queuedDir, ctx, debugShowHitbox))
-                onShootArrow?.invoke()
+        if (anim == Anim.ATTACK && !firedThisAttack) {
+            if (frame == 1) {
+                onBowLoading?.invoke()
+            } else if (frame >= ATTACK_FIRE_FRAME) {
+                val out = queuedOut
+                if (out != null && quiver.tryConsume(gameState)) {
+                    var spawnX = x + w / 2f
+                    if (facing == -1) spawnX -= w * 2.45f
+                    val spawnY = y + h * 0.23f
+                    val speed = 17.0f
+                    out.add(Arrow(spawnX, spawnY, speed * queuedDir, ctx, debugShowHitbox))
+                    onShootArrow?.invoke()
+                }
+                firedThisAttack = true
             }
-            firedThisAttack = true
-            // keep queuedOut for continuous fire while held
         }
 
         // --- Frame-exact MELEE damage emission ---
 // Trigger once per listed frame; cancel stops any future frames.
         if (anim == Anim.MELEE) {
+            if (frame == arrowMeleeSwingFrame) {
+                onArrowMeleeSwing?.invoke()
+            }
+            if (frame == bowMeleeSpinFrame) {
+                onBowMeleeSpin?.invoke()
+            }
+
             // Emit only once per frame index
             if (frame != lastMeleeFrameEmitted) {
                 lastMeleeFrameEmitted = frame
@@ -619,9 +643,8 @@ class Player(
         srcRect.set(layout.src)
         dstRect.set(layout.dst)
 
-        // ── Timers & quiver ─────────────────────────────────────────────────────────
+        // ── Timers ─────────────────────────────────────────────────────────
         if (hurtTimer > 0) hurtTimer--
-        quiver.tick(gameState)
 
         // ── Draw (blink while hurt) ─────────────────────────────────────────────────
         val blink = (hurtTimer > 0) && !dying && ((hurtTimer / 2) % 2 == 0)

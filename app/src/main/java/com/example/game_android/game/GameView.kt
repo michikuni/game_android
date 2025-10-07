@@ -18,6 +18,7 @@ import com.example.game_android.game.entities.Boss
 import com.example.game_android.game.entities.Fireball
 import com.example.game_android.game.entities.Goblin
 import com.example.game_android.game.entities.LaserBolt
+import com.example.game_android.game.entities.PickupItem
 import com.example.game_android.game.entities.Player
 import com.example.game_android.game.entities.Projectile
 import com.example.game_android.game.entities.Skeleton
@@ -75,6 +76,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private var appearDone = false
     private var roarDone = false
 
+    private val pickups = mutableListOf<PickupItem>()
+
     // --- Scoring ---
     private val prefs = context.getSharedPreferences("scores", Context.MODE_PRIVATE)
     private var score = 0
@@ -101,6 +104,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         initGoblins()
         initPlayer()
         initBoss()
+        initPickups()
     }
 
     // --- Surface callbacks ---
@@ -188,7 +192,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
                         // Switch BGM and play roar
                         sound.switchBgm(R.raw.hk_ss_phantom, autoplay = true)
-                        sound.playCinematic(SoundManager.Sfx.BossRoar, volume = 0.1f) {
+                        sound.playCinematic(SoundManager.Sfx.BossRoar, volume = 0.3f) {
                             roarDone = true
                         }
                     }
@@ -251,6 +255,36 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         player.vy += Constants.GRAVITY
         map.moveAndCollide(player)
 
+        // ────────────────── Pickups update & collection ──────────────────
+        run {
+            pickups.forEach { it.update() }
+            val pb = player.bounds()
+            pickups.removeAll { p ->
+                if (RectF.intersects(pb, p.bounds())) {
+                    when (p.type) {
+                        PickupItem.Type.HEART -> {
+                            if (player.hp < player.maxHp) {
+                                player.hp = (player.hp + 1).coerceAtMost(player.maxHp)
+                                sound.playPickPotion()
+                                true
+                            } else false // keep if HP full
+                        }
+
+                        PickupItem.Type.ARROWS -> {
+                            if (player.ammo >= player.maxAmmo) {
+                                false // keep if already full
+                            } else {
+                                // add up to +3 arrows, but not exceeding max
+                                val added = player.addAmmo(3) // give +3 arrows
+                                sound.playPickAmmo()
+                                true
+                            }
+                        }
+                    }
+                } else false
+            }
+        }
+
         // Shooting / Melee input
         if (input.fire && !player.isAttacking && player.ammo > 0) player.tryShoot(arrows)
         player.setMeleeHeld(input.melee)
@@ -309,7 +343,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 playerBounds = player.bounds(),
                 onDamagePlayer = {
                     player.hit()
-                    sound.play(SoundManager.Sfx.PlayerHurt)
                 }
             )
             map.moveAndCollide(boss)
@@ -394,15 +427,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             for (a in arrowsSnap) {
                 for (w in witchesSnap) if (w.alive && a.overlaps(w)) {
                     w.hit(); a.dead = true; sound.playArrowHitEnemy()
-                    if (!w.alive) score += w.score
                 }
                 for (s in skeletonsSnap) if (s.alive && a.overlaps(s)) {
                     s.hit(); a.dead = true; sound.playArrowHitEnemy()
-                    if (!s.alive) score += s.score
                 }
                 for (g in goblinsSnap) if (g.alive && a.overlaps(g)) {
                     g.hit(); a.dead = true; sound.playArrowHitEnemy()
-                    if (!g.alive) score += g.score
                 }
                 if (boss.alive && a.overlaps(boss)) {
                     boss.hit(player.damageDealtToBoss); a.dead = true
@@ -454,7 +484,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                         is Fireball -> {
                             if (!b.alreadyDamagedPlayer()) {
                                 player.hit()
-                                sound.play(SoundManager.Sfx.PlayerHurt)
                                 sound.playFireballExplode()
                             }
                             b.startExplode(hitPlayer = true)
@@ -464,21 +493,18 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                             if (!b.alreadyDamagedPlayer()) {
                                 player.hit()
                                 b.markDamagedPlayer()
-                                sound.play(SoundManager.Sfx.PlayerHurt)
                             }
                         }
 
                         is ArmShard -> {
                             player.hit()
                             b.dead = true
-                            sound.play(SoundManager.Sfx.PlayerHurt)
                             sound.playRockExplode()
                         }
 
                         else -> {
                             player.hit()
                             b.dead = true
-                            sound.play(SoundManager.Sfx.PlayerHurt)
                         }
                     }
                 }
@@ -528,6 +554,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         }
 
         // ────────────────── Cleanup dead enemies after animations ──────────────────
+        score += witches.count { it -> it.isDeadAndGone() } * Constants.WITCH_SCORE +
+                skeletons.count { it -> it.isDeadAndGone() } * Constants.SKELETON_SCORE +
+                goblins.count { it -> it.isDeadAndGone() } * Constants.GOBLIN_SCORE
         witches.removeAll { it.isDeadAndGone() }
         skeletons.removeAll { it.isDeadAndGone() }
         goblins.removeAll { it.isDeadAndGone() }
@@ -549,6 +578,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             c.withTranslation(-camera.x, -camera.y + worldYOffset) {
                 map.drawTiles(this)
                 map.drawDebugTiles(this, camera.x, camera.y, width, height)
+                // NEW:
+                pickups.forEach { it.draw(this) }
+
                 boss.draw(this)
                 witches.forEach { it.draw(this) }
                 skeletons.forEach { it.draw(this) }
@@ -594,6 +626,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
         // --- Boss (dormant, not spawned) ---
         initBoss()            // inside: b.startDormant() + settle-to-ground (from earlier)
+        initPickups()
 
         // --- Camera & background ---
         camera.x = 0f; camera.y = 0f
@@ -652,8 +685,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     private fun initPlayer() {
         player.reset(map.playerStartX.toFloat(), map.playerStartY.toFloat())
+        player.onBowLoading = { sound.play(SoundManager.Sfx.BowLoading) }
         player.onShootArrow = { sound.play(SoundManager.Sfx.PlayerShoot) }
-        player.onHurt = { sound.play(SoundManager.Sfx.PlayerHurt) }
+        player.onHurt = { sound.playPlayerHurt() }
         player.onDeathStart = {
             playerIsDying = true
             playerDeathAnimDone = false
@@ -663,7 +697,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             stopFootstepsIfAny()
             sound.stopCinematic()
             sound.pauseBgm()
-            sound.playCinematic(SoundManager.Sfx.PlayerDie, volume = 1f) {
+            sound.playCinematic(SoundManager.Sfx.PlayerDie, volume = 0.5f) {
                 playerDeathSfxDone = true
             }
 
@@ -675,34 +709,47 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             playerDeathAnimDone = true
         }
 
+        player.onArrowMeleeSwing = {
+            sound.play(SoundManager.Sfx.ArcherMelee1)
+        }
+        player.onBowMeleeSpin = {
+            sound.play(SoundManager.Sfx.ArcherMelee2)
+        }
+
         player.onMeleeStrike = { hitbox ->
             var hitSomething = false
             witches.forEach { w ->
                 if (w.alive && RectF.intersects(hitbox, w.bounds())) {
                     w.hit(); hitSomething = true
-                    if (!w.alive) score += w.score
                 }
             }
             skeletons.forEach { s ->
                 if (s.alive && RectF.intersects(hitbox, s.bounds())) {
                     s.hit(); hitSomething = true
-                    if (!s.alive) score += s.score
                 }
             }
             goblins.forEach { g ->
                 if (g.alive && RectF.intersects(hitbox, g.bounds())) {
                     g.hit(); hitSomething = true
-                    if (!g.alive) score += g.score
                 }
             }
             if (boss.alive && RectF.intersects(hitbox, boss.bounds())) {
                 boss.hit(player.damageDealtToBoss); hitSomething = true
-                // +1000 in boss.onDeath
             }
             if (hitSomething) {
                 Log.d("GameView", "Melee hit")
-                sound.play(SoundManager.Sfx.ArrowHitEnemy)
+                sound.playSwordHitEnemy()
             }
+        }
+    }
+
+    private fun initPickups() {
+        pickups.clear()
+        map.heartSpawns.forEach { (sx, sy) ->
+            pickups += PickupItem(PickupItem.Type.HEART, sx.toFloat(), sy.toFloat(), context)
+        }
+        map.ammoSpawns.forEach { (sx, sy) ->
+            pickups += PickupItem(PickupItem.Type.ARROWS, sx.toFloat(), sy.toFloat(), context)
         }
     }
 
@@ -716,8 +763,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         })
         skeletons.forEach { skeleton ->
             skeleton.onDeath = { sound.playSkeletonDie() }
-            skeleton.onHurt = { sound.play(SoundManager.Sfx.SkeletonHurt) }
-            skeleton.onAttack = { sound.play(SoundManager.Sfx.SwordSwing) }
+            skeleton.onHurt = { sound.playSkeletonHurt() }
+            skeleton.onAttack = { sound.playSwordSwing() }
         }
     }
 
@@ -731,8 +778,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         })
         goblins.forEach { goblin ->
             goblin.onDeath = { sound.playGoblinDie() }
-            goblin.onHurt = { sound.play(SoundManager.Sfx.GoblinHurt) }
-            goblin.onAttack = { sound.play(SoundManager.Sfx.DaggerSwing) }
+            goblin.onHurt = { sound.playGoblinHurt() }
+            goblin.onAttack = { sound.playDaggerSwing() }
         }
     }
 
@@ -761,7 +808,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
                 sound.stopBgm()
                 sound.stopCinematic() // just in case
-                sound.playCinematic(SoundManager.Sfx.BossRoar, volume = 1f) {
+                sound.playCinematic(SoundManager.Sfx.GolemDie, volume = 1f) {
                     bossDeathSfxDone = true
                 }
             }

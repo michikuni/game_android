@@ -40,8 +40,7 @@ class Skeleton(
     var hasHitPlayer = false
 
     private val tile = com.example.game_android.game.core.Constants.TILE.toFloat()
-    private val heightInTiles = 6f
-    val score = 150
+    private val heightInTiles = 6.7f
 
     // AI movement tuning
     private val preferredStandOff = 120f
@@ -51,13 +50,11 @@ class Skeleton(
 
     // Firing
     private val attackCooldownTicks = 60 * 3               // 3 seconds @ 60 FPS
-    private val CAST_ATTACK_FRAME =
-        7                       // keyframe (0-based) to spawn projectile
-    private var attackDelayFrames = 6
+    private val CAST_ATTACK_FRAME = 7
     private var attackDelayCounter = 0
 
     // Detection / debug ranges
-    private val triggerRange = 600f
+    private val triggerRange = 800f
     private val attackRangeX = 120f
     private val attackRangeY = 80f
 
@@ -125,7 +122,7 @@ class Skeleton(
 
     // Debug toggles
     var showHitbox = false
-    var debugShowRanges = true
+    var debugShowRanges = false
 
     // Range paints
     private val rangePaintTrigger = Paint().apply {
@@ -155,7 +152,7 @@ class Skeleton(
     private var attackCd = 0
     private var attackingTicks = 0
     private var attackedThisAnim = false
-    private var dying = false
+    var dying = false
     private var deadAndGone = false
     private var invulTicks = 0
     private val hurtIframes = 10
@@ -244,8 +241,7 @@ class Skeleton(
     }
 
     // Zones that correspond 1:1 with the AI checks
-    private fun visionRect(): RectF =
-        forwardRect(triggerRange, h * visionBandRatio)
+    private fun visionRect(): RectF = forwardRect(triggerRange, h * visionBandRatio)
 
     private fun attackEligibilityRect(): RectF =
         forwardRect(attackRangeX, minOf(attackRangeY, h * visionBandRatio))
@@ -292,8 +288,6 @@ class Skeleton(
         if (RectF.intersects(hitbox, player.bounds())) {
             hasHitPlayer = true
             player.hit()
-            sound.play(SoundManager.Sfx.PlayerHurt)
-            if (player.hp <= 0) state.gameOver = true
         }
     }
 
@@ -315,7 +309,7 @@ class Skeleton(
 
 // Gate for starting an attack: close horizontally, same height band, and in front
         val sameHeight = kotlin.math.abs(playerY - senseCenterY()) <= (h * visionBandRatio)
-        val inFront    = (dxToPlayer * facing) >= (-w * 0.10f)
+        val inFront = (dxToPlayer * facing) >= (-w * 0.10f)
         val closeEnough = kotlin.math.abs(dxToPlayer) <= attackRangeX
 
         if (closeEnough && sameHeight && inFront) {

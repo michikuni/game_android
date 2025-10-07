@@ -8,6 +8,7 @@ import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.util.Log
 import androidx.core.graphics.withSave
 import com.example.game_android.R
 import com.example.game_android.game.util.DebugDrawUtils
@@ -37,7 +38,6 @@ class Witch(
 
     private val tile = com.example.game_android.game.core.Constants.TILE.toFloat()
     private val heightInTiles = 6.5f
-    val score = 150
 
     // AI movement tuning
     private val preferredStandOff = 260f
@@ -90,8 +90,8 @@ class Witch(
     private var facing = 1
 
     // Debug toggles
-    var showHitbox = true
-    var debugShowRanges = true
+    var showHitbox = false
+    var debugShowRanges = false
 
     // Range paints
     private val rangePaintTrigger = Paint().apply {
@@ -322,9 +322,10 @@ class Witch(
                         val dx = (pendingTargetX - cx)
                         val dy = (pendingTargetY - cy)
                         val ang = kotlin.math.atan2(dy, dx)
-                        val speed = 5.6f
+                        val speed = 10f
                         val fvx = (kotlin.math.cos(ang) * speed)
                         val fvy = (kotlin.math.sin(ang) * speed)
+                        Log.d("Witch", "Fireball @ ($cx, $cy) toward ($pendingTargetX, $pendingTargetY)  v=($fvx, $fvy)")
                         out.add(Fireball(cx, cy, fvx, fvy, ctx, showHitbox))
                         onThrowFireball?.invoke()
                     }

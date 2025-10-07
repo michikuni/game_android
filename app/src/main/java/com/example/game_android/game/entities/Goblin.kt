@@ -9,12 +9,13 @@ import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.util.Log
 import androidx.core.graphics.withSave
 import com.example.game_android.R
+import com.example.game_android.game.core.SoundManager
 import com.example.game_android.game.util.BitmapUtils
 import com.example.game_android.game.util.DebugDrawUtils
 import com.example.game_android.game.world.GameState
-import com.example.game_android.game.core.SoundManager
 
 class Goblin(
     px: Float, py: Float, private val ctx: Context
@@ -38,20 +39,20 @@ class Goblin(
     var hp = 3
     var alive = true
     var hasHitPlayer = false
-    val score = 100
 
     private val tile = com.example.game_android.game.core.Constants.TILE.toFloat()
-    private val heightInTiles = 3.5f
+    private val heightInTiles = 3.7f
 
     // AI movement tuning
     private val preferredStandOff = 120f
     private val maxSpeed = 40f
     private val accel = 0.07f
-    private val friction = 0.3f
+    private val friction = 0.5f
 
     // Firing
-    private val attackCooldownTicks  = 60 * 2               // 3 seconds @ 60 FPS
-    private val CAST_ATTACK_FRAME = 7                       // keyframe (0-based) to spawn projectile
+    private val attackCooldownTicks = 60 * 2               // 3 seconds @ 60 FPS
+    private val CAST_ATTACK_FRAME =
+        7                       // keyframe (0-based) to spawn projectile
     private var attackDelayFrames = 6
     private var attackDelayCounter = 0
 
@@ -123,8 +124,8 @@ class Goblin(
     private var facing = 1
 
     // Debug toggles
-    var showHitbox = true
-    var debugShowRanges = true
+    var showHitbox = false
+    var debugShowRanges = false
 
     // Range paints
     private val rangePaintTrigger = Paint().apply {
@@ -172,8 +173,11 @@ class Goblin(
         val (top, bottom) = verticalBandPixels(bandPx)
         val left: Float
         val right: Float
-        if (facing >= 0) { left = x + w; right = x + w + reach }
-        else { left = x - reach; right = x }
+        if (facing >= 0) {
+            left = x + w; right = x + w + reach
+        } else {
+            left = x - reach; right = x
+        }
         return RectF(left, top, right, bottom)
     }
 
@@ -191,16 +195,19 @@ class Goblin(
 
     // Melee hitbox used at the damage keyframe
     private fun meleeHitbox(): RectF {
-        val torsoTop  = y + h * 0.20f
-        val torsoBot  = y + h * 0.75f
-        val bandPx    = minOf(attackRangeY, torsoBot - torsoTop)
-        val top       = (torsoTop + torsoBot - bandPx) * 0.5f
-        val bottom    = top + bandPx
+        val torsoTop = y + h * 0.20f
+        val torsoBot = y + h * 0.75f
+        val bandPx = minOf(attackRangeY, torsoBot - torsoTop)
+        val top = (torsoTop + torsoBot - bandPx) * 0.5f
+        val bottom = top + bandPx
 
         val left: Float
         val right: Float
-        if (facing >= 0) { left = x + w; right = x + w + attackRangeX }
-        else { left = x - attackRangeX; right = x }
+        if (facing >= 0) {
+            left = x + w; right = x + w + attackRangeX
+        } else {
+            left = x - attackRangeX; right = x
+        }
 
         return RectF(left, top, right, bottom)
     }
@@ -236,6 +243,7 @@ class Goblin(
         attackingTicks = s.frames * s.speed
         attackCd = attackCooldownTicks
         attackedThisAnim = false
+        onAttack?.invoke()
         hasHitPlayer = false
         attackDelayCounter = 0
     }
@@ -274,8 +282,6 @@ class Goblin(
         if (RectF.intersects(hitbox, player.bounds())) {
             hasHitPlayer = true
             player.hit()
-            sound.play(SoundManager.Sfx.PlayerHurt)
-            if (player.hp <= 0) state.gameOver = true
         }
     }
 
@@ -296,7 +302,7 @@ class Goblin(
         }
 
         val sameHeight = kotlin.math.abs(playerY - senseCenterY()) <= (h * visionBandRatio)
-        val inFront    = (dxToPlayer * facing) >= (-w * 0.10f)
+        val inFront = (dxToPlayer * facing) >= (-w * 0.10f)
         val closeEnough = kotlin.math.abs(dxToPlayer) <= attackRangeX
 
         if (closeEnough && sameHeight && inFront) {
@@ -316,8 +322,8 @@ class Goblin(
                 } else if (wantChase) {
                     val dist = kotlin.math.abs(dxToPlayer)
                     val desiredVx = when {
-                        dist > (preferredStandOff + 24f) -> maxSpeed * kotlin.math.sign(dxToPlayer)
-                        dist < (preferredStandOff - 24f) -> -maxSpeed * kotlin.math.sign(dxToPlayer)
+                        dist > (preferredStandOff) -> maxSpeed * kotlin.math.sign(dxToPlayer)
+                        dist < (preferredStandOff) -> -maxSpeed * kotlin.math.sign(dxToPlayer)
                         else -> 0f
                     }
                     if (desiredVx == 0f) vx *= friction
@@ -356,7 +362,6 @@ class Goblin(
                 val attackStrip = strips[Anim.ATTACK]!!
                 val fireFrame = CAST_ATTACK_FRAME.coerceIn(0, attackStrip.frames - 1)
                 if (!attackedThisAnim && frame >= fireFrame) {
-                    onAttack?.invoke()
                     attackedThisAnim = true
                 }
                 if (attackingTicks == 0 && frame >= attackStrip.frames - 1) {
@@ -377,6 +382,7 @@ class Goblin(
                 val s = strips[Anim.DEATH]!!
                 if (frame >= s.frames - 1) {
                     deadAndGone = true
+                    alive = false
                 }
             }
 

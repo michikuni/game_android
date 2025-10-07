@@ -163,29 +163,38 @@ class HudRenderer(private val input: InputController, private val context: Conte
             c.drawBitmap(heartBmp, heartSrcTrim, dst, paintForThis)
         }
 
-        // --- Ammo (arrows) under hearts ---
-        val ammoSize = dp(24f)          // a bit smaller than hearts
-        val ammoGap  = dp(0f)
-        val ammoTop  = heartsTop + heartSize + dp(6f)
+        // --- Ammo (arrows) under hearts --- (wrap every 7)
+        val perRow = 10
+        val ammoSize   = dp(24f)   // a bit smaller than hearts
+        val ammoColGap = dp(0f)
+        val ammoRowGap = dp(6f)
+        val ammoTop    = heartsTop + heartSize + dp(6f)
         val ammoLeftStart = heartsLeftStart
 
-        repeat(ammoCapacity) { i ->
-            val left = ammoLeftStart + i * (ammoSize + ammoGap)
-            val dst  = RectF(left, ammoTop, left + ammoSize, ammoTop + ammoSize)
+        val rows = (ammoCapacity + perRow - 1) / perRow  // ceil(capacity / perRow)
 
-            // grey if this slot is beyond current ammo
+        repeat(ammoCapacity) { i ->
+            val row = i / perRow
+            val col = i % perRow
+
+            val left = ammoLeftStart + col * (ammoSize + ammoColGap)
+            val top  = ammoTop + row * (ammoSize + ammoRowGap)
+            val dst  = RectF(left, top, left + ammoSize, top + ammoSize)
+
             val paintForThis = if (i < ammoCount) arrowPaint else arrowGreyPaint
 
-            // the source points RIGHT; rotate +90° around the dst center so it points DOWN
+            // source arrow points RIGHT; rotate +90° so it points DOWN
             c.withRotation(90f, dst.centerX(), dst.centerY()) {
                 drawBitmap(arrowBmp, arrowSrcTrim, dst, paintForThis)
             }
         }
 
+// --- Score under the whole ammo block ---
+        val ammoBlockHeight = rows * ammoSize + (rows - 1).coerceAtLeast(0) * ammoRowGap
         t.textAlign = Paint.Align.LEFT
         t.textSize = dp(16f)
         t.color = Color.WHITE
-        val scoreY = ammoTop + ammoSize + dp(16f)
+        val scoreY = ammoTop + ammoBlockHeight + dp(16f)
         c.drawText("Score: $score", heartsLeftStart, scoreY, t)
         c.drawText("High:  $highScore", heartsLeftStart, scoreY + dp(18f), t)
 

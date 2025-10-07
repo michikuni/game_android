@@ -134,25 +134,25 @@ class Boss(
     // ─────────────────────────────────────────────────────────────────────────────
     private enum class Anim { IDLE, GLOW, WALK, MELEE, RANGE_PREPARE, RANGE_LOOP, LASER_CHARGE, ARMOR, IMMUNE, HURT, DEATH, APPEAR }
 
-    private val stripRange = Strip.loadStrip(ctx, R.drawable.golem_range_attack, 8, loop = false)
+    private val stripRange = Strip.loadStrip(ctx, R.drawable.golem_range_attack, 7, loop = false)
     private val strips = mapOf(
-        Anim.IDLE to Strip.loadStrip(ctx, R.drawable.golem_idle, 10, loop = true),
+        Anim.IDLE to Strip.loadStrip(ctx, R.drawable.golem_idle, 9, loop = true),
         Anim.GLOW to Strip.loadStrip(
             ctx,
             R.drawable.golem_glow,
-            9,
+            8,
             loop = true
         ),       // “chasing” look
         Anim.WALK to Strip.loadStrip(ctx, R.drawable.golem_glow, 11, loop = true),
         Anim.MELEE to Strip.loadStrip(ctx, R.drawable.golem_melee, 6, loop = false),
         Anim.RANGE_PREPARE to stripRange,
         Anim.RANGE_LOOP to stripRange,
-        Anim.LASER_CHARGE to Strip.loadStrip(ctx, R.drawable.golem_laser_cast2, 7, loop = false),
+        Anim.LASER_CHARGE to Strip.loadStrip(ctx, R.drawable.golem_laser_cast2, 5, loop = false),
         Anim.ARMOR to Strip.loadStrip(ctx, R.drawable.golem_armor_buff, 7, loop = true),
         Anim.IMMUNE to Strip.loadStrip(ctx, R.drawable.golem_immune, 9, loop = true),
         Anim.HURT to Strip.loadStrip(ctx, R.drawable.golem_glow, 14, loop = false),
         Anim.DEATH to Strip.loadStrip(ctx, R.drawable.golem_death_appearance2, 11, loop = false),
-        Anim.APPEAR to Strip.loadStrip(ctx, R.drawable.golem_death_appearance2, 15, loop = false),
+        Anim.APPEAR to Strip.loadStrip(ctx, R.drawable.golem_death_appearance2, 12, loop = false),
     )
 
     // Tweak freely; physics (w/h) do NOT change.

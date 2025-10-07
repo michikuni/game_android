@@ -105,6 +105,7 @@ class SoundManager(val ctx: Context) {
         ).build()
 
     enum class Sfx {
+                   GolemDie, ArcherMelee1, ArcherMelee2, BowLoading, PickPotion, PickAmmo,
         ArrowHitEnemy, PlayerDie, PlayerWalk, PlayerHurt, PlayerShoot, ArrowHitWall, FireballExplode, FireballShoot, WitchHurt, WitchDie, DaggerSwing, GoblinDie, SkeletonDie, SwordSwing, SkeletonHurt, GoblinHurt, RockCinematic, BossRoar, ShootBeam, GolemHurt, GolemMelee, GolemMissile, RockExplode, ArmorBuff, Victory
     }
 
@@ -112,8 +113,9 @@ class SoundManager(val ctx: Context) {
 
     init {
         register(ctx, Sfx.ArrowHitEnemy, R.raw.arrow_hit_enemy)
-        register(ctx, Sfx.PlayerHurt, R.raw.terraria_male_player_hurt_sound)
-        register(ctx, Sfx.PlayerShoot, R.raw.bow_load_and_release)
+        register(ctx, Sfx.PlayerHurt, R.raw.player_hurt_3)
+        register(ctx, Sfx.PlayerShoot, R.raw.bow_release)
+        register(ctx, Sfx.BowLoading, R.raw.bow_loading)
         register(ctx, Sfx.PlayerDie, R.raw.player_die)
         register(ctx, Sfx.ArrowHitWall, R.raw.arrow_hit_wall)
         register(ctx, Sfx.PlayerWalk, R.raw.walk4)
@@ -133,9 +135,14 @@ class SoundManager(val ctx: Context) {
         register(ctx, Sfx.GolemHurt, R.raw.golem_hurt)
         register(ctx, Sfx.GolemMelee, R.raw.golem_melee)
         register(ctx, Sfx.GolemMissile, R.raw.golem_missile)
+        register(ctx, Sfx.GolemDie, R.raw.golem_die)
         register(ctx, Sfx.RockExplode, R.raw.rock_explode)
         register(ctx, Sfx.ArmorBuff, R.raw.golem_armor_buff)
         register(ctx, Sfx.Victory, R.raw.yayy)
+        register(ctx, Sfx.ArcherMelee1, R.raw.archer_melee_1)
+        register(ctx, Sfx.ArcherMelee2, R.raw.archer_melee_2)
+        register(ctx, Sfx.PickPotion, R.raw.pick_heart)
+        register(ctx, Sfx.PickAmmo, R.raw.add_ammo)
     }
 
     private fun register(context: Context, kind: Sfx, @RawRes rawId: Int) {
@@ -218,16 +225,22 @@ class SoundManager(val ctx: Context) {
 
     fun playArrowHitWall() = play(Sfx.ArrowHitWall, volume = 0.1f, rate = 1f)
     fun playArrowHitEnemy() = play(Sfx.ArrowHitEnemy, volume = 0.1f, rate = 1f)
+    fun playSwordHitEnemy() = play(Sfx.ArrowHitEnemy, volume = 0.1f, rate = 1f)
     fun playFireballExplode() = play(Sfx.FireballExplode, volume = 0.5f, rate = 1f)
     fun playFireballShoot() = play(Sfx.FireballShoot, volume = 0.5f, rate = 1f)
     fun playWitchDie() = play(Sfx.WitchDie, volume = 0.15f, rate = 1f)
     fun playWitchHurt() = play(Sfx.WitchHurt, volume = 0.3f, rate = 1f)
     fun playDaggerSwing() = play(Sfx.DaggerSwing, volume = 1f, rate = 1f)
     fun playSwordSwing() = play(Sfx.SwordSwing, volume = 1f, rate = 1f)
-    fun playSkeletonDie() = play(Sfx.SkeletonDie, volume = 1f, rate = 1f)
-    fun playGoblinDie() = play(Sfx.GoblinDie, volume = 1f, rate = 1f)
+    fun playSkeletonDie() = play(Sfx.SkeletonDie, volume = 0.1f, rate = 1f)
+    fun playSkeletonHurt() = play(Sfx.SkeletonHurt, volume = 0.3f, rate = 1f)
+    fun playGoblinDie() = play(Sfx.GoblinDie, volume = 0.5f, rate = 1f)
+    fun playGoblinHurt() = play(Sfx.GoblinHurt, volume = 0.5f, rate = 1f)
     fun playShootBeam() = play(Sfx.ShootBeam, volume = 0.5f, rate = 1f)
     fun playRockExplode() = play(Sfx.RockExplode, volume = 0.5f, rate = 1f)
+    fun playPlayerHurt() = play(Sfx.PlayerHurt, volume = 0.3f, rate = 1f)
+    fun playPickPotion() = play(Sfx.PickPotion, volume = 0.5f, rate = 1f)
+    fun playPickAmmo() = play(Sfx.PickAmmo, volume = 0.1f, rate = 1f)
 
     // ------------------------------
     // Lifecycle

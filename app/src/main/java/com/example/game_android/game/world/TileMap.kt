@@ -27,6 +27,9 @@ class TileMap(private val ctx: Context) {
     var bossStartX = tile * (cols - 10)
     var bossStartY = tile * (rows - 3)
 
+    val heartSpawns = mutableListOf<Pair<Int, Int>>()
+    val ammoSpawns = mutableListOf<Pair<Int, Int>>()
+
     val tileset = TileSet(ctx)
 
     init {
@@ -99,7 +102,7 @@ class TileMap(private val ctx: Context) {
         for (r in r0..r1) {
             for (cix in c0..c1) {
                 val left = (cix * tile).toFloat()
-                val top  = (r * tile).toFloat()
+                val top = (r * tile).toFloat()
                 val right = left + tile
                 val bottom = top + tile
 
@@ -118,7 +121,12 @@ class TileMap(private val ctx: Context) {
 
                 // Row/Col indices in the corner
                 if (debugShowIndices) {
-                    c.drawText("$cix,$r", left + 4f, top + dbgIndexPaint.textSize + 2f, dbgIndexPaint)
+                    c.drawText(
+                        "$cix,$r",
+                        left + 4f,
+                        top + dbgIndexPaint.textSize + 2f,
+                        dbgIndexPaint
+                    )
                 }
             }
         }
@@ -257,26 +265,31 @@ class TileMap(private val ctx: Context) {
                     playerStartX = x * tile; playerStartY = (y - 1) * tile
                 }
 
-                'E' -> spawnPoints.add(x * tile to (y - 1) * tile)
+                'E' -> spawnPoints += (x * tile) to (y - 1) * tile
                 'B' -> {
                     bossStartX = x * tile; bossStartY = (y - 2) * tile
                 }
 
                 'W' -> {
-                    witchSpawns += (x * tile) to (y * tile)
-                    // Optionally replace with floor/air as you do for other specials:
-                    grid[y][x] = '.'
+                    witchSpawns += (x * tile) to (y * tile); grid[y][x] = '.'
                 }
 
                 'S' -> {
-                    skeletonSpawns += (x * tile) to (y * tile)
-                    // Optionally replace with floor/air as you do for other specials:
-                    grid[y][x] = '.'
+                    skeletonSpawns += (x * tile) to (y * tile); grid[y][x] = '.'
                 }
 
                 'G' -> {
-                    goblinSpawns += (x * tile) to (y * tile)
-                    // Optionally replace with floor/air as you do for other specials:
+                    goblinSpawns += (x * tile) to (y * tile); grid[y][x] = '.'
+                }
+
+                // NEW:
+                'H' -> {  // Heart potion pickup
+                    heartSpawns += (x * tile) to ((y - 1) * tile)
+                    grid[y][x] = '.'
+                }
+
+                'A' -> {  // Arrow pickup
+                    ammoSpawns += (x * tile) to ((y - 1) * tile)
                     grid[y][x] = '.'
                 }
             }

@@ -4,7 +4,7 @@ package com.example.game_android.game.entities
 import android.util.Log
 import com.example.game_android.game.world.GameState
 
-class Quiver(
+class InfQuiver(
     private val maxAmmo: Int = 5,
     private val cooldownTicks: Int = 30, // 0.5s at 60fps
 ) {

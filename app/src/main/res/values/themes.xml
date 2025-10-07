@@ -5,4 +5,11 @@
         <item name="colorPrimary">@color/purple_500</item>
         <item name="colorSecondary">@color/teal_200</item>
     </style>
+
+    <!-- Launcher theme that shows the system splash -->
+    <style name="Theme.GameAndroid.Launcher" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="windowSplashScreenBackground">#14161C</item>
+        <item name="postSplashScreenTheme">@style/Theme.GameAndroid</item>
+    </style>
 </resources>
