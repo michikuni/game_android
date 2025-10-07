@@ -130,6 +130,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         input.layout(width, height)
     }
 
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        input.layout(w, h)
+    }
+
     // --- Game loop (fixed-step 60 FPS) ---
     override fun run() {
         var last = System.nanoTime()
@@ -148,6 +153,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     // --- Update world ---
     private fun update() {
         if (state.anyOverlay()) return
+        if (width <= 0 || height <= 0) return
 
         // ────────────────── Player death flow: freeze world until both anim & sfx end ──────────────────
         if (playerIsDying) {
