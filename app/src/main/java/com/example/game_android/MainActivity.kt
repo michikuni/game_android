@@ -1,7 +1,13 @@
 package com.example.game_android
 
 import android.content.Intent
-import android.graphics.*
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.Typeface
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
@@ -32,7 +38,7 @@ class MainActivity : AppCompatActivity() {
         }
         private val buttonPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Buttons & layout caches (no per-frame allocs)
+        // Buttons & layout caches
         private val buttons = mutableListOf<MoveButton>()
         private val title = "Soulsong"
         private val credits = "Dang Minh Phuong • Tran Luu Dung • Nguyen Minh Duc"
@@ -45,8 +51,10 @@ class MainActivity : AppCompatActivity() {
 
         // Button colors (constants)
         private val btnStartColor = Color.rgb(70, 70, 90)
-        private val btnEndColor   = Color.rgb(30, 30, 45)
+        private val btnEndColor = Color.rgb(30, 30, 45)
         private val btnCorner = 24f
+
+        private var clickedButton: MoveButton? = null
 
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
             super.onSizeChanged(w, h, oldw, oldh)
@@ -70,7 +78,7 @@ class MainActivity : AppCompatActivity() {
             for (i in labels.indices) {
                 val r = RectF(startX, top, startX + bw, top + bh)
                 val b = MoveButton(labels[i], r)
-                // Preallocate gradient shader for this rect (no alloc in onDraw)
+                // Preallocate gradient shader for this rect
                 b.shader = LinearGradient(
                     r.left, r.top, r.right, r.bottom,
                     btnStartColor, btnEndColor, Shader.TileMode.CLAMP
@@ -97,11 +105,16 @@ class MainActivity : AppCompatActivity() {
                 val b = buttons[i]
                 buttonPaint.shader = b.shader
                 canvas.drawRoundRect(b.rect, btnCorner, btnCorner, buttonPaint)
-                canvas.drawText(b.title, b.rect.centerX(), b.rect.centerY() + textYOffset, titleAndTextPaint)
+                canvas.drawText(
+                    b.title,
+                    b.rect.centerX(),
+                    b.rect.centerY() + textYOffset,
+                    titleAndTextPaint
+                )
             }
             buttonPaint.shader = null
 
-            // Credits (bigger)
+            // Credits
             titleAndTextPaint.textSize = creditsTextSize
             titleAndTextPaint.color = Color.LTGRAY
             canvas.drawText(credits, width / 2f, creditsY, titleAndTextPaint)
@@ -112,26 +125,34 @@ class MainActivity : AppCompatActivity() {
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (event.action == MotionEvent.ACTION_DOWN) {
-                val x = event.x; val y = event.y
-                // No lambda alloc; simple loop.
-                for (i in 0 until buttons.size) {
-                    val b = buttons[i]
+                val x = event.x
+                val y = event.y
+                for (b in buttons) {
                     if (b.rect.contains(x, y)) {
-                        when (b.title) {
-                            "PLAY" -> startActivity(Intent(this@MainActivity, GameActivity::class.java))
-                            "EXIT" -> finish()
-                        }
+                        clickedButton = b // Remember which button was pressed
+                        performClick()    // Now, call performClick to handle the action
                         break
                     }
                 }
             }
-            performClick()
             return true
         }
 
         override fun performClick(): Boolean {
             super.performClick()
+            // All click logic now lives here
+            clickedButton?.let { b ->
+                when (b.title) {
+                    "PLAY" -> context.startActivity(
+                        Intent(context, GameActivity::class.java)
+                    )
+
+                    "EXIT" -> (context as MainActivity).finish()
+                }
+            }
+            clickedButton = null // Reset after handling
             return true
         }
+
     }
 }

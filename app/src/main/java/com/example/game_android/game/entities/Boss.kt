@@ -49,7 +49,6 @@ class Boss(
     var hp = hpMax
 
     private var armorStacks = 0             // 0..3 (thresholds: 75%, 50%, 25%)
-    val score = 10000
 
     var alive = true
     var armorPct = 0f                // 0..0.75 (reduced damage when buffed)
